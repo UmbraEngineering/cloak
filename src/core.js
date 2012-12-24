@@ -142,7 +142,7 @@
 		urlPlaceholders: false,
 
 		// Should the traditional config value be set on $.ajax calls?
-		ajaxQueryParamsTraditional: true,
+		ajaxQueryParamsTraditional: true
 	};
 
 	// Expose a logging utility

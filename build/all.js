@@ -522,6 +522,8 @@ if (typeof JSON !== 'object') {
 			if (! inst instanceof self) {
 				throw new Error('Classes should be invoked with the new keyword.');
 			}
+			// Set the scope for super
+			inst.__scope__ = self.prototype.__scope__;
 			// If a function was given as the constructor, it should
 			// be called every time a new instance is created
 			if (typeof constructor === 'function') {
@@ -568,9 +570,7 @@ if (typeof JSON !== 'object') {
 		self.prototype.__mixins__ = self.__mixins__ = mixins;
 		
 		// Expose the parent
-		self.prototype._super = self.parent = _super;
-		
-		// For super/parent scoping
+		self.parent = parent;
 		self.prototype.__scope__ = self;
 
 		// If an object was given as the constructor, the properties
@@ -584,16 +584,20 @@ if (typeof JSON !== 'object') {
 					(function(method) {
 						self.prototype[method].parent = function(that) {
 							var scope = that.__scope__;
+							if (! scope) {
+								throw new Error('Could not determine super scope. Did you forget to ' +
+									'pass `this` to `.parent`?');
+							}
 							var args = Array.prototype.slice.call(arguments, 1);
 							that.__scope__ = that.__scope__.parent;
-							var result = scope.parent[method].apply(that, args);
+							var result = scope.parent.prototype[method].apply(that, args);
 							that.__scope__ = scope;
 							return result;
 						};
 						self.prototype[method].parentApply = function(that, args) {
 							args = Array.prototype.slice.call(args, 0);
 							args.unshift(that);
-							self.prototype[method].parent.apply(that, args);
+							return self.prototype[method].parent.apply(that, args);
 						};
 					}(i));
 				}
@@ -16852,12 +16856,23 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 }
 
 })( window );
+/**
+ * REST Client Framework Core
+ */
+
+/*jshint browser: true, bitwise: false, camelcase: false, eqnull: true, latedef: false,
+  plusplus: false, jquery: true, shadow: true, smarttabs: true, loopfunc: true */
+
+/*global Class: true, EventEmitter2: true, _: true, Handlebars: true */
+
 (function() {
 
 // -------------------------------------------------------------
 //  AppObject Class
+	
+	var nextId = 1;
 
-	var AppObject = Class().Extends(EventEmitter2, {
+	Class('AppObject').Extends(EventEmitter2, {
 
 		//
 		// Base constructor. All inheriting classes that override this
@@ -16865,20 +16880,24 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		// overriding method.
 		//
 		construct: function() {
-			console.log('[' + time() + '] Intializing', (this.__class__ || 'AppObject'), ' instance');
+			console.log('[' + time() + '] Intializing', this.__class__, 'instance');
 			EventEmitter2.call(this, {
 				wildcard: true,
 				delimiter: '.'
 			});
+			this._uuid = nextId++;
+			if (typeof this.initialize === 'function') {
+				this.initialize.apply(this, arguments);
+			}
 		},
 
 		//
 		// Override EventEmitter2::emit so that it logs all emitted events. This could
 		// (and probably should) be removed from production builds.
 		//
-		emit: function() {
+		emit: function(event) {
 			var ctorName = (this === app) ? 'app' : this.__class__;
-			console.log('[' + time() + '] ' + ctorName + ':ready');
+			console.log('[' + time() + '] ' + ctorName + ':' + event);
 			EventEmitter2.prototype.emit.apply(this, arguments);
 		},
 
@@ -16950,7 +16969,7 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 	Class.namespace(app);
 
 	// Bind AppObject onto app
-	app.AppObject = AppObject;
+	app.AppObject = AppObject; delete window.AppObject;
 
 	// This is where application config will be defined. These settings
 	// should not be changed in place. To configure your app, create a
@@ -16970,11 +16989,31 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 
 		// The property name used for passing model ids to and from
 		// the server
-		idKey: 'id'
+		idKey: 'id',
+
+		// Should id values be automatically copied over to models after
+		// a GET request?
+		autoAssignId: true,
+
+		// Should the URL placeholders feature be enabled, allowing
+		// complex URLs
+		urlPlaceholders: false,
+
+		// Should the traditional config value be set on $.ajax calls?
+		ajaxQueryParamsTraditional: true
 	};
 
+	// Expose a logging utility
+	app.log = function(value) {
+		console.log('[' + time() + ']', value);
+	};
+
+	// Expose easy access to window/document jQuery objects
+	app.$win = $(window);
+	app.$doc = $(document);
+
 	// Runs when the DOM is ready
-	$(document).ready(app.emits('ready'));
+	app.$doc.ready(app.emits('ready'));
 
 // -------------------------------------------------------------
 //  Model Class
@@ -16987,13 +17026,13 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		// overriding method.
 		//
 		construct: function() {
-			this.construct.parent(this);
-
 			// All model instances have their own XHR queue. This may not seem
 			// very efficient in some ways, but there is actually very little
 			// memory waste and it makes sure that everything is quick and
 			// correct.
 			this._xhr = new app.XhrQueue();
+
+			this.construct.parentApply(this, arguments);
 		},
 
 		//
@@ -17091,18 +17130,70 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		//
 		// Queue an XHR on the model's XhrQueue object
 		//
-		xhr: function(method, url, body) {
-			return this._xhr.request(method, url, body);
+		xhr: function(method, url, body, options) {
+			if (app.config.urlPlaceholders) {
+				url = url.replace(app.Model._placeholderRegex,
+					_.bind(this._parseUrlPlaceholders, this)
+				);
+			}
+			return this._xhr.request(method, url, body, options);
+		},
+
+		//
+		// Parses {value} placeholders in URLs
+		//
+		_parseUrlPlaceholders: function(match, $1) {
+			var levels = $1.split('.');
+			var value;
+			if (levels[0] === 'this') {
+				levels.shift();
+				value = this;
+			} else {
+				value = window;
+			}
+			for (var i = 0, c = levels.length; i < c; i++) {
+				value = value[levels[i]];
+			}
+			return value;
 		},
 
 		//
 		// Perform a GET request and update the model instance with the
 		// retrieved data
 		//
-		get: function() {
-			return this.xhr('GET', this.url)
+		get: function(properties) {
+			if (arguments.length && ! _.isArray(properties)) {
+				properties = _.toArray(arguments);
+			}
+			return this.xhr('GET', this.url, null, {properties: properties})
 				.on('error', _.bind(this.onGetError, this))
 				.on('success', _.bind(this.onGetSuccess, this));
+		},
+
+		//
+		// Exactly the same as {Model::get} above, except that multiple
+		// of these can be called at a time and only the minimum needed
+		// XHRs will actually be made. For example, if the following code
+		// was run:
+		//
+		//   var foo = new FooModel();
+		//
+		//   foo.getLazy().on('ready', callback1);
+		//   foo.getLazy().on('ready', callback2);
+		//   foo.getLazy().on('ready', callback3);
+		//
+		// Only the first call would fire an XHR. The others would recognize
+		// that a GET is already running and just wait for that first one
+		// to finish before firing their callback.
+		//
+		getLazy: function() {
+			if (this._getLazyRequest) {
+				return this._getLazyRequest;
+			}
+			return this._getLazyRequest = this.xhr('GET', this.url, null)
+				.on('error', _.bind(this.onGetError, this))
+				.on('success', _.bind(this.onGetSuccess, this))
+				.on('done', _.bind(this.onGetLazyDone, this));
 		},
 
 		//
@@ -17116,7 +17207,16 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		// Runs when a GET request comes back successfully
 		//
 		onGetSuccess: function(req) {
-			this.fromXhr(req.json, callback);
+			// Automatically assign the correct ID to requested objects
+			if (app.config.autoAssignId && req.json && req.json[app.config.idKey]) {
+				this[app.config.idKey] = req.json[app.config.idKey];
+			}
+			// Call the model's xhr data loader
+			try {
+				this.fromXhr(req.json, callback);
+			} catch (err) {
+				return callback(err);
+			}
 			if (this.fromXhr.length < 2) {
 				callback();	
 			}
@@ -17126,6 +17226,14 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 				}
 				req.emit.apply(req, _.extend(_.toArray(arguments), ['ready']));
 			}
+		},
+
+		//
+		// Runs when a {Model::getLazy} request finishes in any way; Just
+		// does clean up
+		//
+		onGetLazyDone: function() {
+			this._getLazyRequest = null;
 		},
 
 		//
@@ -17152,7 +17260,7 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		//
 		patch: function(arg1) {
 			var keys = _.isArray(arg1) ? arg1 : _.toArray(arguments);
-			var data = _.patch.apply(_, [this.toXhr()].concat(keys));
+			var data = _.pick.apply(_, [this.toXhr()].concat(keys));
 			return this.xhr('PATCH', this.url, data)
 				.on('error', _.bind(this.onSaveError, this))
 				.on('success', _.bind(this.onSaveSuccess, this));
@@ -17176,15 +17284,21 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 				// Fetch the Location header and strip off the parts that
 				// we don't care about
 				this.url = req.xhr.getResponseHeader('Location');
+				// If there is no Location header, throw an error
+				if (this.url === null) {
+					throw new Error('No Location header sent from server; This is most likely ' +
+						'a CORS error (http://bugs.jquery.com/ticket/11455#comment:1)');
+				}
 				this.url = this.url.replace(new RegExp('^' + app.config.apiUrl), '');
 
 				// Take the last segment of the URI as the new id
-				this.id = this.url.split('/');
-				if (! this.id[this.id.length]) {
-					this.id.pop();
+				this[app.config.idKey] = this.url.split('/');
+				if (! this[app.config.idKey][this[app.config.idKey].length - 1]) {
+					this[app.config.idKey].pop();
 				}
-				this.id = this.id.pop();
+				this[app.config.idKey] = this[app.config.idKey].pop();
 			}
+			req.emit('ready', req);
 		},
 
 		//
@@ -17222,6 +17336,9 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		// all property values
 		//
 		destroy: function() {
+			if (typeof this.teardown === 'function') {
+				this.teardown();
+			}
 			for (var i in this) {
 				if (this.hasOwnProperty(this)) {
 					this[i] = null;
@@ -17230,6 +17347,11 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		}
 
 	});
+	
+	//
+	// This is the regex used for parsing placeholders in model URLs
+	//
+	app.Model._placeholderRegex = /\{([^}]+)\}/;
 
 // -------------------------------------------------------------
 //  Model Serializing
@@ -17342,7 +17464,7 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		// overriding method.
 		//
 		construct: function() {
-			this.construct.parent(this);
+			this.construct.parentApply(this, arguments);
 		},
 
 		//
@@ -17355,17 +17477,26 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		//
 		// Render the view's associated template with the given data
 		//
-		render: function(data) {
+		render: function(data, templateProperty) {
+			data = _.extend({ _uuid: this._uuid }, data || { });
+
 			this.emit('render', data);
 
+			templateProperty = templateProperty || 'template';
+
 			// If the template has not been used yet, compile it
-			if (typeof this.template === 'string') {
-				this.template = Handlebars.compile(this.template);
+			if (typeof this[templateProperty] === 'string') {
+				this[templateProperty] = Handlebars.compile(this[templateProperty]);
 			}
 			
 			// Render the compiled template
-			if (typeof this.template === 'function') {
-				return this.template(data || { });
+			if (typeof this[templateProperty] === 'function') {
+				// This is a precompiled template which must be run through the
+				// method Handlebars.template() first
+				if (this[templateProperty].length === 5) {
+					this[templateProperty] = Handlebars.template(this[templateProperty]);
+				}
+				return this[templateProperty](data);
 			}
 			
 			throw new TypeError('Cannot render view without a valid template');
@@ -17388,7 +17519,7 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 			events = _.extend({ }, events || this.events);
 
 			if (events) {
-				if (events._extend) {
+				if (events._extends) {
 					this.bindEvents(this._super.events);
 				}
 
@@ -17402,6 +17533,19 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		},
 
 		//
+		// Used internally by View::_bindEvent below
+		//
+		// Parses an event string for event data, eg.
+		//
+		//   keystroke{combo:ctrl+s}
+		//
+		// Becomes:
+		//
+		//   .on("keystroke", {"combo":"ctrl+s"}, ...)
+		//
+		_eventDataRegex: /\{([^}]+)\}$/,
+
+		//
 		// Used internally by View::bindEvents above
 		//
 		// Binds a single event from the events object.
@@ -17410,16 +17554,102 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 			var event;
 
 			query = query.split(' ');
-			event = query.shift() + '._viewEvents';
+			event = query.shift();
 			query = query.join(' ');
 			func = _.bind(this[func], this);
 
-			if (delegate) {
+			// Parse event data out of the event name
+			var data = this._eventDataRegex.exec(event);
+			if (data) {
+				event = event.replace(data[0], '');
+				data = data[1].split(',');
+				
+				var temp = { };
+				_.forEach(data, function(item) {
+					item = item.split(':');
+					temp[item[0]] = item[1];
+				});
+				data = temp;
+			}
+
+			// Namespace the event so we can easily unbind later
+			event += '._viewEvents.' + this._uuid;
+
+			// Bind directly to this.$elem
+			if (query === '@') {
+				this.$elem.off(event);
+				this.$elem.on(event, data, func);
+			}
+
+			// Bind to the document
+			else if (query === '') {
+				app.$doc.off(event);
+				app.$doc.on(event, data, func);
+			}
+
+			// Bind using a delegate
+			else if (delegate) {
 				this.$elem.off(event, query);
-				this.$elem.on(event, query, func);
-			} else {
+				this.$elem.on(event, query, data, func);
+			}
+
+			// Bind directly with a query
+			else {
 				this.$(query).off(event);
-				this.$(query).on(event, func);
+				this.$(query).on(event, data, func);
+			}
+		},
+
+		//
+		// Removes event functions bound above
+		//
+		unbindEvents: function(events) {
+			//
+			// TODO doesn't handle the _extends case
+			//
+			_.forEach(events || _.keys(this.events),
+				_.bind(this._unbindEvent, this, this.events._delegate));
+		},
+
+		//
+		// Used internally by View::unbindEvents above
+		//
+		// Unbinds a single event from the events object
+		//
+		_unbindEvent: function(delegate, query) {
+			var event;
+
+			query = query.split(' ');
+			event = query.shift();
+			query = query.join(' ');
+
+			// Parse event data out of the event name
+			var data = this._eventDataRegex.exec(event);
+			if (data) {
+				event = event.replace(data[0], '');
+			}
+
+			// Namespace the event so we can easily unbind later
+			event += '._viewEvents.' + this._uuid;
+
+			// Bound directly to this.$elem
+			if (query === '@') {
+				this.$elem.off(event);
+			}
+
+			// Bound to the document
+			else if (query === '') {
+				app.$doc.off(event);
+			}
+
+			// Bound using a delegate
+			else if (delegate) {
+				this.$elem.off(event, query);
+			}
+
+			// Bound directly with a query
+			else {
+				this.$(query).off(event);
 			}
 		},
 
@@ -17429,6 +17659,12 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		// of the view instance
 		//
 		destroy: function() {
+			if (typeof this.teardown === 'function') {
+				this.teardown();
+			}
+			if (this.events) {
+				this.unbindEvents();
+			}
 			if (this.$elem) {
 				this.$elem.html('');
 				this.$elem.remove();
@@ -17451,22 +17687,25 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		running: false,
 
 		construct: function() {
+			this.construct.parent(this);
+			_.bindAll(this);
+
 			this.queue = [ ];
+
+			// This is a hack to avoid thrown duplicate errors because of
+			// the below re-emitting of events
+			this.on('error', $.noop);
 		},
 
 		//
 		// Queues up a new XHR
 		//
-		request: function(method, url, body) {
-			var req = new app.XhrRequest(method, url, body);
+		request: function(method, url, body, options) {
+			var req = new app.XhrRequest(method, url, body, options);
 
 			// Also emit events at the XhrQueue level to allow more general listening
 			var self = this;
 			req.onAny(this.reemit());
-
-			// This is a hack to avoid thrown duplicate errors because of
-			// the above re-emitting of events
-			this.on('error', $.noop);
 
 			this.queue.push(req);
 			this._run();
@@ -17503,11 +17742,16 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 	
 	Class('XhrRequest').Extends('AppObject', {
 
+		xhr: null,
+
 		//
 		// Prepares to make the request; Does every step except actually sending
 		// the request to the server.
 		//
-		construct: function(method, url, body) {
+		construct: function(method, url, body, options) {
+			this.construct.parent(this);
+			_.bindAll(this);
+
 			this.method  = method;
 			this.url     = url;
 			this.body    = body;
@@ -17521,11 +17765,12 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 				dataType:     'json',
 				contentType:  'application/json',
 				complete:     this.oncomplete,
-				headers:      { }
+				headers:      { },
+				traditional:  !! app.config.ajaxQueryParamsTraditional
 			};
 
 			// If needed, use an x-http-method-override header to fake the method
-			if (_.indexOf(app.config.httpMethodOverride, method)) {
+			if (_.indexOf(app.config.httpMethodOverride, method) >= 0) {
 				this.config.type = 'POST';
 				this.config.headers['X-Http-Method-Override'] = method;
 			}
@@ -17536,7 +17781,7 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 				if (! auth._compiled) {
 					auth._compiled = btoa(auth.user + ':' + auth.pass);
 				}
-				this.config.header.Authorization = 'Basic ' + auth._compiled;
+				this.config.headers.Authorization = 'Basic ' + auth._compiled;
 			}
 
 			// Add the request body
@@ -17546,6 +17791,14 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 				this.config.data = JSON.stringify(body);
 				this.config.processData = false;
 			}
+
+			if (options) {
+				if (options.properties) {
+					this.properties = options.properties;
+					delete options.properties;
+				}
+				_.extend(this.config, options);
+			}
 		},
 
 		//
@@ -17553,7 +17806,7 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		//
 		run: function() {
 			console.log('[' + time() + ']', 'XHR:', this.method, this.url, this.config.data);
-			$.ajax(this.config);
+			this.xhr = $.ajax(this.config);
 		},
 
 		//
@@ -17561,17 +17814,30 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		// events.
 		//
 		oncomplete: function(xhr, status) {
-			this.xhr = xhr;
 			try {
 				this.json = JSON.parse(xhr.responseText);
 			} catch (e) {
 				this.json = { };
 			}
+			if (this.properties) {
+				var pickArgs = this.properties.slice(0);
+				pickArgs.unshift(this.json);
+				_.pick.apply(_, pickArgs);
+			}
+			this.emit('done');
 			this.emit(status, this);
 			if (status === 'error' || status === 'success') {
 				this.emit(status + '.' + xhr.status, this);
 			}
-			this.emit('done');
+		},
+
+		//
+		// Abort the request early
+		//
+		abort: function() {
+			if (this.xhr.abort) {
+				this.xhr.abort();
+			}
 		}
 
 	});
@@ -17582,6 +17848,8 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 	Class('XhrError').Extends(Error, {
 
 		construct: function(req) {
+			Error.call(this);
+
 			this.req = req;
 			this.message = 'XHR Error ' + req.xhr.status + ': ' + req.xhr.statusText +
 				' - ' + req.xhr.responseText;

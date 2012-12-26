@@ -15,4 +15,5 @@ Cloak is a fairly new framework, and I haven't gotten around to writing up full 
 ## TODO
 
 * Create a built-in structure for handling collections
+* Create a router structure
 * Write up website/documentation

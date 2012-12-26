@@ -1,5 +1,5 @@
 /**
- * REST Client Framework Core
+ * Cloak Framework Core
  */
 
 /*jshint browser: true, bitwise: false, camelcase: false, eqnull: true, latedef: false,

@@ -490,10 +490,13 @@ if (typeof JSON !== 'object') {
  * A simple JavaScript class system
  *
  * @author     James Brumond
- * @version    0.2.0
+ * @version    0.2.2
  * @copyright  Copyright 2012 James Brumond
  * @license    Dual licensed under MIT and GPL
  */
+
+/*jshint browser: true, bitwise: false, camelcase: false, eqnull: true, latedef: false,
+  plusplus: false, jquery: true, shadow: true, smarttabs: true, loopfunc: true */
 
 (function() {
 	var _global = this;
@@ -524,14 +527,19 @@ if (typeof JSON !== 'object') {
 			}
 			// Set the scope for super
 			inst.__scope__ = self.prototype.__scope__;
+			// This allows .apply() type expansion with constructor calls
+			var _args = arguments[0];
+			if (! (_args && _args.__shouldExpand__)) {
+				_args = arguments;
+			}
 			// If a function was given as the constructor, it should
 			// be called every time a new instance is created
 			if (typeof constructor === 'function') {
-				constructor.apply(inst, arguments);
+				constructor.apply(inst, _args);
 			}
 			// If a construct() method exists, it should also be called
 			if (typeof inst.construct === 'function') {
-				inst.construct.apply(inst, arguments);
+				inst.construct.apply(inst, _args);
 			}
 		};
 		
@@ -549,6 +557,7 @@ if (typeof JSON !== 'object') {
 			}
 		}
 		var ctor = function() {
+			this._super = _super;
 			this.constructor = self;
 		};
 		ctor.prototype = _super;
@@ -556,11 +565,11 @@ if (typeof JSON !== 'object') {
 		
 		// Inherit from mixins
 		if (mixins) {
-			for (var i = 0, c = mixins.length; i < c; i++) {
-				if (typeof mixins[i] === 'string') {
-					mixins[i] = namespace[mixins[i]];
+			for (var j = 0, c = mixins.length; j < c; j++) {
+				if (typeof mixins[j] === 'string') {
+					mixins[j] = namespace[mixins[j]];
 				}
-				mixins[i].mixinTo(self);
+				mixins[j].mixinTo(self);
 			}
 		}
 		
@@ -576,11 +585,11 @@ if (typeof JSON !== 'object') {
 		// If an object was given as the constructor, the properties
 		// should be placed on the prototype
 		if (typeof constructor === 'object') {
-			for (var i in constructor) {
-				self.prototype[i] = constructor[i];
+			for (var k in constructor) {
+				self.prototype[k] = constructor[k];
 				// Build a parent method on all class methods that will allow
 				// calling supers with this.method.parent(this, ...)
-				if (isFunc(self.prototype[i])) {
+				if (isFunc(self.prototype[k])) {
 					(function(method) {
 						self.prototype[method].parent = function(that) {
 							var scope = that.__scope__;
@@ -588,18 +597,18 @@ if (typeof JSON !== 'object') {
 								throw new Error('Could not determine super scope. Did you forget to ' +
 									'pass `this` to `.parent`?');
 							}
-							var args = Array.prototype.slice.call(arguments, 1);
+							var args = slice(arguments, 1);
 							that.__scope__ = that.__scope__.parent;
 							var result = scope.parent.prototype[method].apply(that, args);
 							that.__scope__ = scope;
 							return result;
 						};
 						self.prototype[method].parentApply = function(that, args) {
-							args = Array.prototype.slice.call(args, 0);
+							args = slice(args);
 							args.unshift(that);
 							return self.prototype[method].parent.apply(that, args);
 						};
-					}(i));
+					}(k));
 				}
 			}
 		}
@@ -626,7 +635,9 @@ if (typeof JSON !== 'object') {
 		 * @return  object
 		 */
 		self.create = function() {
-			return new self();
+			var args = slice(arguments);
+			args.__shouldExpand__ = true;
+			return new self(args);
 		};
 		
 		/**
@@ -672,7 +683,7 @@ if (typeof JSON !== 'object') {
 	
 	function Class(name, parent, constructor) {
 		if (arguments.length <= 1) {
-			if (name && (typeof name === 'object' || isFunc(name))) {
+			if (name && (typeof name === 'object' || isFunc(name)) && ! isArray(name)) {
 				return createClass(null, null, [ ], name);
 			}
 			return new TempClass(name);
@@ -697,6 +708,10 @@ if (typeof JSON !== 'object') {
 	Class.namespace = function(ns) {
 		namespace = ns ? ns : _global;
 	};
+
+	Class.isClass = function(value) {
+		return isClass(value);
+	};
 	
 	function Mixin(constructor) {
 		this.mixinTo = function(func) {
@@ -715,6 +730,18 @@ if (typeof JSON !== 'object') {
 	
 	function isFunc(value) {
 		return (toString.call(value) === '[object Function]');
+	}
+
+	function isArray(value) {
+		return (toString.call(value) === '[object Array]');
+	}
+
+	function isClass(value) {
+		return (typeof value === 'function' && value.toString() === '[object Class]');
+	}
+
+	function slice(value, index) {
+		return Array.prototype.slice.call(value, index);
 	}
 	
 	function assignTo(name, constructor) {
@@ -16857,7 +16884,7 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 
 })( window );
 /**
- * REST Client Framework Core
+ * Cloak Framework Core
  */
 
 /*jshint browser: true, bitwise: false, camelcase: false, eqnull: true, latedef: false,

@@ -23,7 +23,17 @@ function init(grunt) {
 		},
 		jshint: {
 			options: {
-				browser: true
+				browser: true,
+				bitwise: false,
+				camelcase: false,
+				eqnull: true,
+				latedef: false,
+				plusplus: false,
+				jquery: true,
+				shadow: true,
+				smarttabs: true,
+				loopfunc: true,
+				boss: true
 			}
 		},
 	// Concat

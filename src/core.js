@@ -137,18 +137,18 @@
 		// a GET request?
 		autoAssignId: true,
 
-		// Should the URL placeholders feature be enabled, allowing
-		// complex URLs
-		urlPlaceholders: false,
-
 		// Should the traditional config value be set on $.ajax calls?
 		ajaxQueryParamsTraditional: true
 	};
 
 	// Expose a logging utility
-	app.log = function(value) {
-		console.log('[' + time() + ']', value);
-	};
+	if (window.console && console.log) {
+		app.log = function(value) {
+			console.log('[' + time() + ']', value);
+		};	
+	} else {
+		app.log = function() { };
+	}
 
 	// Expose easy access to window/document jQuery objects
 	app.$win = $(window);
@@ -174,64 +174,43 @@
 			// correct.
 			this._xhr = new app.XhrQueue();
 
+			// We use this for every xhr, so bind it now to save processing
+			_.bindAll(this, '_parseUrlPlaceholders');
+
+			var attributes = { };
+			var scope = this.constructor;
+			var scopeAttributes;
+
+			// Work our way up the inheritence chain, building an initial attributes
+			// object. Each level can be either an object, a function which returns
+			// an object, or undefined/null.
+			do {
+				scopeAttributes = scope.prototype.attributes;
+				if (scopeAttributes) {
+					if (typeof scopeAttributes === 'function') {
+						scopeAttributes = scopeAttributes.call(this);
+					} else {
+						scopeAttributes = _.clone(scopeAttributes);
+					}
+					attributes = _.extend(scopeAttributes, attributes);
+				}
+			} while (scope = scope.parent);
+			
+			this.attributes = attributes;
+
+			// Build the URL parsing regex
+			var url = this.url.replace('{@.id}', '([a-zA-Z0-9]+)');
+			this._urlRegex = new RegExp('^' + app.config.apiUrl + url, 'i');
+
 			this.construct.parentApply(this, arguments);
 		},
 
 		//
-		// Converts the model instance into a simple object, removing unwanted
-		// properties and serializing sub-objects
+		// Returns a simple object containing all of the attribtues
 		//
-		toObject: function(opts) {
-			opts = opts || { };
-
-			// Create a simple recursive clone of the model and walk the structure
-			var obj = _.merge({ }, this);
-			app.Model._walk(obj, function(value, property, scope) {
-
-				// If a whitelist is given, make sure the property is on the list
-				if (opts.whitelist && ! _.indexOf(opts.whitelist, property)) {
-					delete scope[property];
-					return;
-				}
-
-				// Remove blacklisted properties
-				if (_.indexOf(this._toObjectBlacklist, property) >= 0) {
-					delete scope[property];
-					return;
-				}
-
-				// Remove/serialize view objects
-				if (value instanceof app.View) {
-					if (opts.serializeViews) {
-						scope[property] = opts.serializeViews(value);
-					}
-					return;
-				}
-
-				// Replace sub-models with ID numbers/serialized format
-				if (value instanceof app.Model) {
-					if (opts.serializeModels) {
-						scope[property] = opts.serializeModels(value);
-					} else {
-						scope[property] = value[app.config.idKey];
-					}
-				}
-			});
-
-			// Add meta data about the instance if needed
-			if (opts.meta) {
-				obj.__class__ = this.__class__;
-				obj.__parent__ = this.__parent__;
-				obj.__mixins__ = this.__mixins__;
-			}
-
-			return obj;
+		toObject: function() {
+			return _.clone(this.attributes, true);
 		},
-
-		//
-		// Internal instance properties that should not be copied by toObject
-		//
-		_toObjectBlacklist: [ '_events', 'delimiter', '_xhr' ],
 
 		//
 		// Used to convert the model to JSON for POST/PUT/PATCH XHR calls
@@ -244,40 +223,21 @@
 		// Used to convert XHR GET JSON back into model format
 		//
 		fromXhr: function(data) {
-			_.extend(this, data);
+			_.extend(this.attributes, data);
 		},
 
 		//
 		// Converts the object into a JSON string
 		//
-		toJson: function(opts) {
-			return JSON.stringify(this.toObject(opts));
-		},
-
-		//
-		// Serializes the model with app.Model.serialize (defined below)
-		//
-		serialize: function() {
-			return app.Model.serialize(this);
-		},
-
-		//
-		// Clone the model into another instance
-		//
-		clone: function() {
-			var obj = new this.constructor();
-			_.merge(obj, this.toObject());
+		toJson: function() {
+			return JSON.stringify(this.toObject());
 		},
 
 		//
 		// Queue an XHR on the model's XhrQueue object
 		//
 		xhr: function(method, url, body, options) {
-			if (app.config.urlPlaceholders) {
-				url = url.replace(app.Model._placeholderRegex,
-					_.bind(this._parseUrlPlaceholders, this)
-				);
-			}
+			url = url.replace(app.Model._placeholderRegex, this._parseUrlPlaceholders);
 			return this._xhr.request(method, url, body, options);
 		},
 
@@ -290,11 +250,14 @@
 			if (levels[0] === 'this') {
 				levels.shift();
 				value = this;
+			} else if (levels[0] === '@') {
+				levels.shift();
+				value = this.attributes;
 			} else {
 				value = window;
 			}
 			for (var i = 0, c = levels.length; i < c; i++) {
-				value = value[levels[i]];
+				value = value[levels[i]] || '';
 			}
 			return value;
 		},
@@ -379,14 +342,27 @@
 		},
 
 		//
-		// Saves to the server using a POST/PUT request
+		// Saves the model to the server. Selects the request method automatically
+		// based on whether or not an ID property already exists.
 		//
 		save: function() {
-			// If there is no id value, this is assumed to be a new object
-			// and is saved with a POST. Otherwise, we assume this is already
-			// on the server and save with a PUT
-			var method = this[app.config.idKey] ? 'PUT' : 'POST';
-			return this.xhr(method, this.url, this.toXhr())
+			return (this.attributes[app.config.idKey] ? this.put() : this.post());
+		},
+
+		// 
+		// Save the model to the server using a POST request
+		// 
+		post: function() {
+			return this.xhr('POST', this.url, this.toXhr())
+				.on('error', _.bind(this.onSaveError, this))
+				.on('success', _.bind(this.onSaveSuccess, this)); 
+		},
+
+		// 
+		// Save the model to the server using a PUT request
+		// 
+		put: function() {
+			return this.xhr('PUT', this.url, this.toXhr())
 				.on('error', _.bind(this.onSaveError, this))
 				.on('success', _.bind(this.onSaveSuccess, this));
 		},
@@ -423,23 +399,27 @@
 			// fetch the Location header and parse it for our new id and
 			// resource URI. 
 			if (req.xhr.status === 201) {
-				// Fetch the Location header and strip off the parts that
-				// we don't care about
-				this.url = req.xhr.getResponseHeader('Location');
+				// Fetch the Location header for the new object
+				var url = req.xhr.getResponseHeader('Location');
+
 				// If there is no Location header, throw an error
-				if (this.url === null) {
+				if (url === null) {
 					throw new Error('No Location header sent from server; This is most likely ' +
 						'a CORS error (http://bugs.jquery.com/ticket/11455#comment:1)');
 				}
-				this.url = this.url.replace(new RegExp('^' + app.config.apiUrl), '');
 
-				// Take the last segment of the URI as the new id
-				this[app.config.idKey] = this.url.split('/');
-				if (! this[app.config.idKey][this[app.config.idKey].length - 1]) {
-					this[app.config.idKey].pop();
+				// Parse the header to get the object ID
+				var match = this._urlRegex.exec(url);
+
+				// If there is no match, throw an error
+				if (! match) {
+					throw new Error('The server returned an invalid Location header');
 				}
-				this[app.config.idKey] = this[app.config.idKey].pop();
+
+				// Store the object ID  on the model
+				this.attributes[app.config.idKey] = match[1];
 			}
+
 			req.emit('ready', req);
 		},
 
@@ -449,7 +429,7 @@
 		del: function() {
 			// Don't allow deleting without an ID to avoid accidental deletion
 			// of entire list routes
-			if (this[app.config.idKey]) {
+			if (this.attribute[app.config.idKey]) {
 				return this.xhr('DELETE', this.url)
 					.on('error', _.bind(this.onDelError, this))
 					.on('success', _.bind(this.onDelSuccess, this));

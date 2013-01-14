@@ -210,12 +210,37 @@
 			this.construct.parentApply(this, arguments);
 		},
 
+	// -------------------------------------------------------------
+
+		get: function(attr) {
+			return this.attributes[attr];
+		},
+
+		set: function(attr, value) {
+			var old = this.attributes[attr];
+			if (old !== value) {
+				this.attributes[attr] = value;
+				this.emit('change.' + attr, value, old);
+			}
+		},
+
+	// -------------------------------------------------------------
+
 		//
 		// Returns a simple object containing all of the attribtues
 		//
 		toObject: function() {
 			return _.clone(this.attributes, true);
 		},
+
+		//
+		// Converts the object into a JSON string
+		//
+		toJson: function() {
+			return JSON.stringify(this.toObject());
+		},
+
+	// -------------------------------------------------------------
 
 		//
 		// Used to convert the model to JSON for POST/PUT/PATCH XHR calls
@@ -230,14 +255,6 @@
 		fromXhr: function(data) {
 			_.extend(this.attributes, data);
 		},
-
-		//
-		// Converts the object into a JSON string
-		//
-		toJson: function() {
-			return JSON.stringify(this.toObject());
-		},
-
 		//
 		// Queue an XHR on the model's XhrQueue object
 		//
@@ -264,8 +281,15 @@
 			for (var i = 0, c = levels.length; i < c; i++) {
 				value = value[levels[i]] || '';
 			}
+			// If the placeholder value was found and is a function,
+			// call the function and return its result.
+			if (typeof value === 'function') {
+				value = value.call(this);
+			}
 			return value;
 		},
+
+	// -------------------------------------------------------------
 
 		//
 		// Perform a GET request and update the model instance with the
@@ -346,6 +370,8 @@
 			this._loadLazyRequest = null;
 		},
 
+	// -------------------------------------------------------------
+
 		//
 		// Saves the model to the server. Selects the request method automatically
 		// based on whether or not an ID property already exists.
@@ -413,13 +439,15 @@
 			req.emit('ready', req);
 		},
 
+	// -------------------------------------------------------------
+
 		//
 		// Remove the resource from the server with a DELETE request
 		//
 		del: function() {
 			// Don't allow deleting without an ID to avoid accidental deletion
 			// of entire list routes
-			if (this.attribute[app.config.idKey]) {
+			if (this.attributes[app.config.idKey]) {
 				return this.xhr('DELETE', this.url)
 					.on('error', _.bind(this.onDelError, this))
 					.on('success', _.bind(this.onDelSuccess, this));
@@ -442,6 +470,8 @@
 				this.destroy();
 			}
 		},
+
+	// -------------------------------------------------------------
 
 		//
 		// Prepare the object for garbage collection by nulling out

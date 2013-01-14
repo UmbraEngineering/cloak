@@ -29,7 +29,7 @@ Class('User').Extends('Model', {
 
 Class('Group').Extends('Model', {
 
-	url: '/api/v1/group/{@.id}'
+	url: '/api/v1/group/{@.id}',
 
 	attributes: {
 		name: null

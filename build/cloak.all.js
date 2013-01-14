@@ -18837,6 +18837,11 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 
 (function() {
 
+	//
+	// This is the regex used for parsing placeholders in model URLs
+	//
+	var urlPlaceholderRegex = /\{([^}]+)\}/;
+
 // -------------------------------------------------------------
 //  AppObject Class
 	
@@ -19033,12 +19038,37 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 			this.construct.parentApply(this, arguments);
 		},
 
+	// -------------------------------------------------------------
+
+		get: function(attr) {
+			return this.attributes[attr];
+		},
+
+		set: function(attr, value) {
+			var old = this.attributes[attr];
+			if (old !== value) {
+				this.attributes[attr] = value;
+				this.emit('change.' + attr, value, old);
+			}
+		},
+
+	// -------------------------------------------------------------
+
 		//
 		// Returns a simple object containing all of the attribtues
 		//
 		toObject: function() {
 			return _.clone(this.attributes, true);
 		},
+
+		//
+		// Converts the object into a JSON string
+		//
+		toJson: function() {
+			return JSON.stringify(this.toObject());
+		},
+
+	// -------------------------------------------------------------
 
 		//
 		// Used to convert the model to JSON for POST/PUT/PATCH XHR calls
@@ -19053,19 +19083,11 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		fromXhr: function(data) {
 			_.extend(this.attributes, data);
 		},
-
-		//
-		// Converts the object into a JSON string
-		//
-		toJson: function() {
-			return JSON.stringify(this.toObject());
-		},
-
 		//
 		// Queue an XHR on the model's XhrQueue object
 		//
 		xhr: function(method, url, body, options) {
-			url = url.replace(app.Model._placeholderRegex, this._parseUrlPlaceholders);
+			url = url.replace(urlPlaceholderRegex, this._parseUrlPlaceholders);
 			return this._xhr.request(method, url, body, options);
 		},
 
@@ -19087,59 +19109,66 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 			for (var i = 0, c = levels.length; i < c; i++) {
 				value = value[levels[i]] || '';
 			}
+			// If the placeholder value was found and is a function,
+			// call the function and return its result.
+			if (typeof value === 'function') {
+				value = value.call(this);
+			}
 			return value;
 		},
+
+	// -------------------------------------------------------------
 
 		//
 		// Perform a GET request and update the model instance with the
 		// retrieved data
 		//
-		get: function(properties) {
+		load: function(properties) {
 			if (arguments.length && ! _.isArray(properties)) {
 				properties = _.toArray(arguments);
 			}
 			return this.xhr('GET', this.url, null, {properties: properties})
-				.on('error', _.bind(this.onGetError, this))
-				.on('success', _.bind(this.onGetSuccess, this));
+				.on('error', _.bind(this.onLoadError, this))
+				.on('success', _.bind(this.onLoadSuccess, this));
 		},
 
 		//
-		// Exactly the same as {Model::get} above, except that multiple
+		// Exactly the same as {Model::load} above, except that multiple
 		// of these can be called at a time and only the minimum needed
 		// XHRs will actually be made. For example, if the following code
 		// was run:
 		//
 		//   var foo = new FooModel();
 		//
-		//   foo.getLazy().on('ready', callback1);
-		//   foo.getLazy().on('ready', callback2);
-		//   foo.getLazy().on('ready', callback3);
+		//   foo.loadLazy().on('ready', callback1);
+		//   foo.loadLazy().on('ready', callback2);
+		//   foo.loadLazy().on('ready', callback3);
 		//
 		// Only the first call would fire an XHR. The others would recognize
 		// that a GET is already running and just wait for that first one
 		// to finish before firing their callback.
 		//
-		getLazy: function() {
-			if (this._getLazyRequest) {
-				return this._getLazyRequest;
+		loadLazy: function() {
+			if (this._loadLazyRequest) {
+				return this._loadLazyRequest;
 			}
-			return this._getLazyRequest = this.xhr('GET', this.url, null)
-				.on('error', _.bind(this.onGetError, this))
-				.on('success', _.bind(this.onGetSuccess, this))
-				.on('done', _.bind(this.onGetLazyDone, this));
+			return this._loadLazyRequest = this.xhr('GET', this.url, null)
+				.on('error', _.bind(this.onLoadError, this))
+				.on('success', _.bind(this.onLoadSuccess, this))
+				.on('done', _.bind(this.onLoadLazyDone, this));
 		},
 
 		//
 		// Runs when an error occurs on a GET request
 		//
-		onGetError: function(req) {
+		onLoadError: function(req) {
 			throw new app.XhrError(req);
 		},
 
 		//
 		// Runs when a GET request comes back successfully
 		//
-		onGetSuccess: function(req) {
+		onLoadSuccess: function(req) {
 			// Automatically assign the correct ID to requested objects
 			if (app.config.autoAssignId && req.json && req.json[app.config.idKey]) {
 				this[app.config.idKey] = req.json[app.config.idKey];
@@ -19165,32 +19194,19 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		// Runs when a {Model::getLazy} request finishes in any way; Just
 		// does clean up
 		//
-		onGetLazyDone: function() {
-			this._getLazyRequest = null;
+		onLoadLazyDone: function() {
+			this._loadLazyRequest = null;
 		},
+
+	// -------------------------------------------------------------
 
 		//
 		// Saves the model to the server. Selects the request method automatically
 		// based on whether or not an ID property already exists.
 		//
 		save: function() {
-			return (this.attributes[app.config.idKey] ? this.put() : this.post());
-		},
-
-		// 
-		// Save the model to the server using a POST request
-		// 
-		post: function() {
-			return this.xhr('POST', this.url, this.toXhr())
-				.on('error', _.bind(this.onSaveError, this))
-				.on('success', _.bind(this.onSaveSuccess, this)); 
-		},
-
-		// 
-		// Save the model to the server using a PUT request
-		// 
-		put: function() {
-			return this.xhr('PUT', this.url, this.toXhr())
+			var method = (this.attributes[app.config.idKey] ? 'PUT' : 'POST');
+			return this.xhr(method, this.url, this.toXhr())
 				.on('error', _.bind(this.onSaveError, this))
 				.on('success', _.bind(this.onSaveSuccess, this));
 		},
@@ -19251,13 +19267,15 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 			req.emit('ready', req);
 		},
 
+	// -------------------------------------------------------------
+
 		//
 		// Remove the resource from the server with a DELETE request
 		//
 		del: function() {
 			// Don't allow deleting without an ID to avoid accidental deletion
 			// of entire list routes
-			if (this.attribute[app.config.idKey]) {
+			if (this.attributes[app.config.idKey]) {
 				return this.xhr('DELETE', this.url)
 					.on('error', _.bind(this.onDelError, this))
 					.on('success', _.bind(this.onDelSuccess, this));
@@ -19281,6 +19299,8 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 			}
 		},
 
+	// -------------------------------------------------------------
+
 		//
 		// Prepare the object for garbage collection by nulling out
 		// all property values
@@ -19297,108 +19317,15 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		}
 
 	});
-	
-	//
-	// This is the regex used for parsing placeholders in model URLs
-	//
-	app.Model._placeholderRegex = /\{([^}]+)\}/;
 
 // -------------------------------------------------------------
-//  Model Serializing
-
-	//
-	// A recursive walker function used for serializing models
-	//
-	app.Model._walk = function(obj, callback) {
-		// Figure out what object we are walking
-		obj = obj || this;
-
-		// Start iterating...
-		var shouldRecurse;
-		for (var i in obj) {
-			if (obj.hasOwnProperty(i)) {
-				shouldRecurse = (obj[i] && typeof obj[i] === 'object');
-				if (callback.call(obj, obj[i], i, obj) === false) {
-					shouldRecurse = false;
-				}
-				if (shouldRecurse) {
-					this._walk(callback, obj[i]);
-				}
-			}
-		}
-	};
+//  Collection Class
 	
-	//
-	// This creates serialized string of the given model which can then
-	// be unserialized back into a model object.
-	//
-	app.Model.serialize = function(model) {
-		// If there is a pre-serialize method, clone the model to avoid
-		// modifying the original and run the method.
-		if (model.beforeSerialize) {
-			model = model.clone();
-			model.beforeSerialize();
-		}
-		// Convert the model to the correct json format
-		return model.toJson({
-			meta: true,
-			serializeModels: function(model) {
-				return {
-					id: model[app.config.idKey],
-					__class__: model.__class__,
-					__parent__: model.__parent__,
-					__mixins__: model.__mixins__
-				};
-			}
-		});
-	};
+	Class('Collection').Extends('AppObject', {
 
-	//
-	// This takes a string generated by serialize above and turns it back
-	// into a model object. If the correct class structure has not been
-	// created, unserialize will throw a type error.
-	//
-	app.Model.unserialize = function(json) {
-		if (typeof json === 'string') {
-			json = JSON.parse(json);
-		}
-		if (! json || typeof json !== 'object') {
-			throw new TypeError('Invalid input value given; Must a JSON string or object');
-		}
-		
-		// First, check the meta data/class structure
-		var ctor = app[json.__class__];
-		if (! ctor) {
-			throw new TypeError('The class "' + json.__class__ + '" has not been defined.');
-		}
-		if (ctor.prototype.__parent__ !== json.__parent__) {
-			throw new TypeError('The class defined as "' + json.__class__ + '" does not match the ' +
-				'inheritence chain of the seriailized model.');
-		}
-		if (_.difference(json.__mixins__, ctor.prototype.__mixins__).length ||
-			_.difference(ctor.prototype.__mixins__, json.__mixins__).length) {
-			throw new TypeError('The mixins defined for "' + json.__class__ + '" do not match ' +
-				'those defined for the serialized model');
-		}
+		// ...
 
-		// Create a new model object
-		var model = new ctor();
-		if (model.beforeUnserialize) {
-			model.beforeUnserialize();
-		}
-
-		// Copy over properties
-		_.merge(model, json);
-		app.Model._walk(model, function(value, property, scope) {
-			// Check for models and rebuild them
-			if (typeof value === 'object' && value.__class__ && value.__parent__ && value.__mixins__) {
-				scope[property] = new app[value.__class__]();
-				return false;
-			}
-		});
-
-		return model;
-	};
+	});
 
 // -------------------------------------------------------------
 //  View Class

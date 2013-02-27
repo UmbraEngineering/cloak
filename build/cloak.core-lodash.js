@@ -1,2439 +1,8 @@
-/*
-    json2.js
-    2012-10-08
-
-    Public Domain.
-
-    NO WARRANTY EXPRESSED OR IMPLIED. USE AT YOUR OWN RISK.
-
-    See http://www.JSON.org/js.html
-
-
-    This code should be minified before deployment.
-    See http://javascript.crockford.com/jsmin.html
-
-    USE YOUR OWN COPY. IT IS EXTREMELY UNWISE TO LOAD CODE FROM SERVERS YOU DO
-    NOT CONTROL.
-
-
-    This file creates a global JSON object containing two methods: stringify
-    and parse.
-
-        JSON.stringify(value, replacer, space)
-            value       any JavaScript value, usually an object or array.
-
-            replacer    an optional parameter that determines how object
-                        values are stringified for objects. It can be a
-                        function or an array of strings.
-
-            space       an optional parameter that specifies the indentation
-                        of nested structures. If it is omitted, the text will
-                        be packed without extra whitespace. If it is a number,
-                        it will specify the number of spaces to indent at each
-                        level. If it is a string (such as '\t' or '&nbsp;'),
-                        it contains the characters used to indent at each level.
-
-            This method produces a JSON text from a JavaScript value.
-
-            When an object value is found, if the object contains a toJSON
-            method, its toJSON method will be called and the result will be
-            stringified. A toJSON method does not serialize: it returns the
-            value represented by the name/value pair that should be serialized,
-            or undefined if nothing should be serialized. The toJSON method
-            will be passed the key associated with the value, and this will be
-            bound to the value
-
-            For example, this would serialize Dates as ISO strings.
-
-                Date.prototype.toJSON = function (key) {
-                    function f(n) {
-                        // Format integers to have at least two digits.
-                        return n < 10 ? '0' + n : n;
-                    }
-
-                    return this.getUTCFullYear()   + '-' +
-                         f(this.getUTCMonth() + 1) + '-' +
-                         f(this.getUTCDate())      + 'T' +
-                         f(this.getUTCHours())     + ':' +
-                         f(this.getUTCMinutes())   + ':' +
-                         f(this.getUTCSeconds())   + 'Z';
-                };
-
-            You can provide an optional replacer method. It will be passed the
-            key and value of each member, with this bound to the containing
-            object. The value that is returned from your method will be
-            serialized. If your method returns undefined, then the member will
-            be excluded from the serialization.
-
-            If the replacer parameter is an array of strings, then it will be
-            used to select the members to be serialized. It filters the results
-            such that only members with keys listed in the replacer array are
-            stringified.
-
-            Values that do not have JSON representations, such as undefined or
-            functions, will not be serialized. Such values in objects will be
-            dropped; in arrays they will be replaced with null. You can use
-            a replacer function to replace those with JSON values.
-            JSON.stringify(undefined) returns undefined.
-
-            The optional space parameter produces a stringification of the
-            value that is filled with line breaks and indentation to make it
-            easier to read.
-
-            If the space parameter is a non-empty string, then that string will
-            be used for indentation. If the space parameter is a number, then
-            the indentation will be that many spaces.
-
-            Example:
-
-            text = JSON.stringify(['e', {pluribus: 'unum'}]);
-            // text is '["e",{"pluribus":"unum"}]'
-
-
-            text = JSON.stringify(['e', {pluribus: 'unum'}], null, '\t');
-            // text is '[\n\t"e",\n\t{\n\t\t"pluribus": "unum"\n\t}\n]'
-
-            text = JSON.stringify([new Date()], function (key, value) {
-                return this[key] instanceof Date ?
-                    'Date(' + this[key] + ')' : value;
-            });
-            // text is '["Date(---current time---)"]'
-
-
-        JSON.parse(text, reviver)
-            This method parses a JSON text to produce an object or array.
-            It can throw a SyntaxError exception.
-
-            The optional reviver parameter is a function that can filter and
-            transform the results. It receives each of the keys and values,
-            and its return value is used instead of the original value.
-            If it returns what it received, then the structure is not modified.
-            If it returns undefined then the member is deleted.
-
-            Example:
-
-            // Parse the text. Values that look like ISO date strings will
-            // be converted to Date objects.
-
-            myData = JSON.parse(text, function (key, value) {
-                var a;
-                if (typeof value === 'string') {
-                    a =
-/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2}(?:\.\d*)?)Z$/.exec(value);
-                    if (a) {
-                        return new Date(Date.UTC(+a[1], +a[2] - 1, +a[3], +a[4],
-                            +a[5], +a[6]));
-                    }
-                }
-                return value;
-            });
-
-            myData = JSON.parse('["Date(09/09/2001)"]', function (key, value) {
-                var d;
-                if (typeof value === 'string' &&
-                        value.slice(0, 5) === 'Date(' &&
-                        value.slice(-1) === ')') {
-                    d = new Date(value.slice(5, -1));
-                    if (d) {
-                        return d;
-                    }
-                }
-                return value;
-            });
-
-
-    This is a reference implementation. You are free to copy, modify, or
-    redistribute.
-*/
-
-/*jslint evil: true, regexp: true */
-
-/*members "", "\b", "\t", "\n", "\f", "\r", "\"", JSON, "\\", apply,
-    call, charCodeAt, getUTCDate, getUTCFullYear, getUTCHours,
-    getUTCMinutes, getUTCMonth, getUTCSeconds, hasOwnProperty, join,
-    lastIndex, length, parse, prototype, push, replace, slice, stringify,
-    test, toJSON, toString, valueOf
-*/
-
-
-// Create a JSON object only if one does not already exist. We create the
-// methods in a closure to avoid creating global variables.
-
-if (typeof JSON !== 'object') {
-    JSON = {};
-}
-
-(function () {
-    'use strict';
-
-    function f(n) {
-        // Format integers to have at least two digits.
-        return n < 10 ? '0' + n : n;
-    }
-
-    if (typeof Date.prototype.toJSON !== 'function') {
-
-        Date.prototype.toJSON = function (key) {
-
-            return isFinite(this.valueOf())
-                ? this.getUTCFullYear()     + '-' +
-                    f(this.getUTCMonth() + 1) + '-' +
-                    f(this.getUTCDate())      + 'T' +
-                    f(this.getUTCHours())     + ':' +
-                    f(this.getUTCMinutes())   + ':' +
-                    f(this.getUTCSeconds())   + 'Z'
-                : null;
-        };
-
-        String.prototype.toJSON      =
-            Number.prototype.toJSON  =
-            Boolean.prototype.toJSON = function (key) {
-                return this.valueOf();
-            };
-    }
-
-    var cx = /[\u0000\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
-        escapable = /[\\\"\x00-\x1f\x7f-\x9f\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
-        gap,
-        indent,
-        meta = {    // table of character substitutions
-            '\b': '\\b',
-            '\t': '\\t',
-            '\n': '\\n',
-            '\f': '\\f',
-            '\r': '\\r',
-            '"' : '\\"',
-            '\\': '\\\\'
-        },
-        rep;
-
-
-    function quote(string) {
-
-// If the string contains no control characters, no quote characters, and no
-// backslash characters, then we can safely slap some quotes around it.
-// Otherwise we must also replace the offending characters with safe escape
-// sequences.
-
-        escapable.lastIndex = 0;
-        return escapable.test(string) ? '"' + string.replace(escapable, function (a) {
-            var c = meta[a];
-            return typeof c === 'string'
-                ? c
-                : '\\u' + ('0000' + a.charCodeAt(0).toString(16)).slice(-4);
-        }) + '"' : '"' + string + '"';
-    }
-
-
-    function str(key, holder) {
-
-// Produce a string from holder[key].
-
-        var i,          // The loop counter.
-            k,          // The member key.
-            v,          // The member value.
-            length,
-            mind = gap,
-            partial,
-            value = holder[key];
-
-// If the value has a toJSON method, call it to obtain a replacement value.
-
-        if (value && typeof value === 'object' &&
-                typeof value.toJSON === 'function') {
-            value = value.toJSON(key);
-        }
-
-// If we were called with a replacer function, then call the replacer to
-// obtain a replacement value.
-
-        if (typeof rep === 'function') {
-            value = rep.call(holder, key, value);
-        }
-
-// What happens next depends on the value's type.
-
-        switch (typeof value) {
-        case 'string':
-            return quote(value);
-
-        case 'number':
-
-// JSON numbers must be finite. Encode non-finite numbers as null.
-
-            return isFinite(value) ? String(value) : 'null';
-
-        case 'boolean':
-        case 'null':
-
-// If the value is a boolean or null, convert it to a string. Note:
-// typeof null does not produce 'null'. The case is included here in
-// the remote chance that this gets fixed someday.
-
-            return String(value);
-
-// If the type is 'object', we might be dealing with an object or an array or
-// null.
-
-        case 'object':
-
-// Due to a specification blunder in ECMAScript, typeof null is 'object',
-// so watch out for that case.
-
-            if (!value) {
-                return 'null';
-            }
-
-// Make an array to hold the partial results of stringifying this object value.
-
-            gap += indent;
-            partial = [];
-
-// Is the value an array?
-
-            if (Object.prototype.toString.apply(value) === '[object Array]') {
-
-// The value is an array. Stringify every element. Use null as a placeholder
-// for non-JSON values.
-
-                length = value.length;
-                for (i = 0; i < length; i += 1) {
-                    partial[i] = str(i, value) || 'null';
-                }
-
-// Join all of the elements together, separated with commas, and wrap them in
-// brackets.
-
-                v = partial.length === 0
-                    ? '[]'
-                    : gap
-                    ? '[\n' + gap + partial.join(',\n' + gap) + '\n' + mind + ']'
-                    : '[' + partial.join(',') + ']';
-                gap = mind;
-                return v;
-            }
-
-// If the replacer is an array, use it to select the members to be stringified.
-
-            if (rep && typeof rep === 'object') {
-                length = rep.length;
-                for (i = 0; i < length; i += 1) {
-                    if (typeof rep[i] === 'string') {
-                        k = rep[i];
-                        v = str(k, value);
-                        if (v) {
-                            partial.push(quote(k) + (gap ? ': ' : ':') + v);
-                        }
-                    }
-                }
-            } else {
-
-// Otherwise, iterate through all of the keys in the object.
-
-                for (k in value) {
-                    if (Object.prototype.hasOwnProperty.call(value, k)) {
-                        v = str(k, value);
-                        if (v) {
-                            partial.push(quote(k) + (gap ? ': ' : ':') + v);
-                        }
-                    }
-                }
-            }
-
-// Join all of the member texts together, separated with commas,
-// and wrap them in braces.
-
-            v = partial.length === 0
-                ? '{}'
-                : gap
-                ? '{\n' + gap + partial.join(',\n' + gap) + '\n' + mind + '}'
-                : '{' + partial.join(',') + '}';
-            gap = mind;
-            return v;
-        }
-    }
-
-// If the JSON object does not yet have a stringify method, give it one.
-
-    if (typeof JSON.stringify !== 'function') {
-        JSON.stringify = function (value, replacer, space) {
-
-// The stringify method takes a value and an optional replacer, and an optional
-// space parameter, and returns a JSON text. The replacer can be a function
-// that can replace values, or an array of strings that will select the keys.
-// A default replacer method can be provided. Use of the space parameter can
-// produce text that is more easily readable.
-
-            var i;
-            gap = '';
-            indent = '';
-
-// If the space parameter is a number, make an indent string containing that
-// many spaces.
-
-            if (typeof space === 'number') {
-                for (i = 0; i < space; i += 1) {
-                    indent += ' ';
-                }
-
-// If the space parameter is a string, it will be used as the indent string.
-
-            } else if (typeof space === 'string') {
-                indent = space;
-            }
-
-// If there is a replacer, it must be a function or an array.
-// Otherwise, throw an error.
-
-            rep = replacer;
-            if (replacer && typeof replacer !== 'function' &&
-                    (typeof replacer !== 'object' ||
-                    typeof replacer.length !== 'number')) {
-                throw new Error('JSON.stringify');
-            }
-
-// Make a fake root object containing our value under the key of ''.
-// Return the result of stringifying the value.
-
-            return str('', {'': value});
-        };
-    }
-
-
-// If the JSON object does not yet have a parse method, give it one.
-
-    if (typeof JSON.parse !== 'function') {
-        JSON.parse = function (text, reviver) {
-
-// The parse method takes a text and an optional reviver function, and returns
-// a JavaScript value if the text is a valid JSON text.
-
-            var j;
-
-            function walk(holder, key) {
-
-// The walk method is used to recursively walk the resulting structure so
-// that modifications can be made.
-
-                var k, v, value = holder[key];
-                if (value && typeof value === 'object') {
-                    for (k in value) {
-                        if (Object.prototype.hasOwnProperty.call(value, k)) {
-                            v = walk(value, k);
-                            if (v !== undefined) {
-                                value[k] = v;
-                            } else {
-                                delete value[k];
-                            }
-                        }
-                    }
-                }
-                return reviver.call(holder, key, value);
-            }
-
-
-// Parsing happens in four stages. In the first stage, we replace certain
-// Unicode characters with escape sequences. JavaScript handles many characters
-// incorrectly, either silently deleting them, or treating them as line endings.
-
-            text = String(text);
-            cx.lastIndex = 0;
-            if (cx.test(text)) {
-                text = text.replace(cx, function (a) {
-                    return '\\u' +
-                        ('0000' + a.charCodeAt(0).toString(16)).slice(-4);
-                });
-            }
-
-// In the second stage, we run the text against regular expressions that look
-// for non-JSON patterns. We are especially concerned with '()' and 'new'
-// because they can cause invocation, and '=' because it can cause mutation.
-// But just to be safe, we want to reject all unexpected forms.
-
-// We split the second stage into 4 regexp operations in order to work around
-// crippling inefficiencies in IE's and Safari's regexp engines. First we
-// replace the JSON backslash pairs with '@' (a non-JSON character). Second, we
-// replace all simple value tokens with ']' characters. Third, we delete all
-// open brackets that follow a colon or comma or that begin the text. Finally,
-// we look to see that the remaining characters are only whitespace or ']' or
-// ',' or ':' or '{' or '}'. If that is so, then the text is safe for eval.
-
-            if (/^[\],:{}\s]*$/
-                    .test(text.replace(/\\(?:["\\\/bfnrt]|u[0-9a-fA-F]{4})/g, '@')
-                        .replace(/"[^"\\\n\r]*"|true|false|null|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?/g, ']')
-                        .replace(/(?:^|:|,)(?:\s*\[)+/g, ''))) {
-
-// In the third stage we use the eval function to compile the text into a
-// JavaScript structure. The '{' operator is subject to a syntactic ambiguity
-// in JavaScript: it can begin a block or an object literal. We wrap the text
-// in parens to eliminate the ambiguity.
-
-                j = eval('(' + text + ')');
-
-// In the optional fourth stage, we recursively walk the new structure, passing
-// each name/value pair to a reviver function for possible transformation.
-
-                return typeof reviver === 'function'
-                    ? walk({'': j}, '')
-                    : j;
-            }
-
-// If the text is not JSON parseable, then a SyntaxError is thrown.
-
-            throw new SyntaxError('JSON.parse');
-        };
-    }
-}());
-
-(function(){var a=typeof window!="undefined"?window:exports,b="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=",c=function(){try{document.createElement("$")}catch(a){return a}}();a.btoa||(a.btoa=function(a){for(var d,e,f=0,g=b,h="";a.charAt(f|0)||(g="=",f%1);h+=g.charAt(63&d>>8-f%1*8)){e=a.charCodeAt(f+=.75);if(e>255)throw c;d=d<<8|e}return h}),a.atob||(a.atob=function(a){a=a.replace(/=+$/,"");if(a.length%4==1)throw c;for(var d=0,e,f,g=0,h="";f=a.charAt(g++);~f&&(e=d%4?e*64+f:f,d++%4)?h+=String.fromCharCode(255&e>>(-2*d&6)):0)f=b.indexOf(f);return h})})();
-/**
- * History.js Core
- * @author Benjamin Arthur Lupton <contact@balupton.com>
- * @copyright 2010-2011 Benjamin Arthur Lupton <contact@balupton.com>
- * @license New BSD License <http://creativecommons.org/licenses/BSD/>
- */
-
-(function(window,undefined){
-	"use strict";
-
-	// ========================================================================
-	// Initialise
-
-	// Localise Globals
-	var
-		console = window.console||undefined, // Prevent a JSLint complain
-		document = window.document, // Make sure we are using the correct document
-		navigator = window.navigator, // Make sure we are using the correct navigator
-		sessionStorage = window.sessionStorage||false, // sessionStorage
-		setTimeout = window.setTimeout,
-		clearTimeout = window.clearTimeout,
-		setInterval = window.setInterval,
-		clearInterval = window.clearInterval,
-		JSON = window.JSON,
-		alert = window.alert,
-		History = window.History = window.History||{}, // Public History Object
-		history = window.history; // Old History Object
-
-	// MooTools Compatibility
-	JSON.stringify = JSON.stringify||JSON.encode;
-	JSON.parse = JSON.parse||JSON.decode;
-
-	// Check Existence
-	if ( typeof History.init !== 'undefined' ) {
-		throw new Error('History.js Core has already been loaded...');
-	}
-
-	// Initialise History
-	History.init = function(){
-		// Check Load Status of Adapter
-		if ( typeof History.Adapter === 'undefined' ) {
-			return false;
-		}
-
-		// Check Load Status of Core
-		if ( typeof History.initCore !== 'undefined' ) {
-			History.initCore();
-		}
-
-		// Check Load Status of HTML4 Support
-		if ( typeof History.initHtml4 !== 'undefined' ) {
-			History.initHtml4();
-		}
-
-		// Return true
-		return true;
-	};
-
-
-	// ========================================================================
-	// Initialise Core
-
-	// Initialise Core
-	History.initCore = function(){
-		// Initialise
-		if ( typeof History.initCore.initialized !== 'undefined' ) {
-			// Already Loaded
-			return false;
-		}
-		else {
-			History.initCore.initialized = true;
-		}
-
-
-		// ====================================================================
-		// Options
-
-		/**
-		 * History.options
-		 * Configurable options
-		 */
-		History.options = History.options||{};
-
-		/**
-		 * History.options.hashChangeInterval
-		 * How long should the interval be before hashchange checks
-		 */
-		History.options.hashChangeInterval = History.options.hashChangeInterval || 100;
-
-		/**
-		 * History.options.safariPollInterval
-		 * How long should the interval be before safari poll checks
-		 */
-		History.options.safariPollInterval = History.options.safariPollInterval || 500;
-
-		/**
-		 * History.options.doubleCheckInterval
-		 * How long should the interval be before we perform a double check
-		 */
-		History.options.doubleCheckInterval = History.options.doubleCheckInterval || 500;
-
-		/**
-		 * History.options.storeInterval
-		 * How long should we wait between store calls
-		 */
-		History.options.storeInterval = History.options.storeInterval || 1000;
-
-		/**
-		 * History.options.busyDelay
-		 * How long should we wait between busy events
-		 */
-		History.options.busyDelay = History.options.busyDelay || 250;
-
-		/**
-		 * History.options.debug
-		 * If true will enable debug messages to be logged
-		 */
-		History.options.debug = History.options.debug || false;
-
-		/**
-		 * History.options.initialTitle
-		 * What is the title of the initial state
-		 */
-		History.options.initialTitle = History.options.initialTitle || document.title;
-
-
-		// ====================================================================
-		// Interval record
-
-		/**
-		 * History.intervalList
-		 * List of intervals set, to be cleared when document is unloaded.
-		 */
-		History.intervalList = [];
-
-		/**
-		 * History.clearAllIntervals
-		 * Clears all setInterval instances.
-		 */
-		History.clearAllIntervals = function(){
-			var i, il = History.intervalList;
-			if (typeof il !== "undefined" && il !== null) {
-				for (i = 0; i < il.length; i++) {
-					clearInterval(il[i]);
-				}
-				History.intervalList = null;
-			}
-		};
-
-
-		// ====================================================================
-		// Debug
-
-		/**
-		 * History.debug(message,...)
-		 * Logs the passed arguments if debug enabled
-		 */
-		History.debug = function(){
-			if ( (History.options.debug||false) ) {
-				History.log.apply(History,arguments);
-			}
-		};
-
-		/**
-		 * History.log(message,...)
-		 * Logs the passed arguments
-		 */
-		History.log = function(){
-			// Prepare
-			var
-				consoleExists = !(typeof console === 'undefined' || typeof console.log === 'undefined' || typeof console.log.apply === 'undefined'),
-				textarea = document.getElementById('log'),
-				message,
-				i,n,
-				args,arg
-				;
-
-			// Write to Console
-			if ( consoleExists ) {
-				args = Array.prototype.slice.call(arguments);
-				message = args.shift();
-				if ( typeof console.debug !== 'undefined' ) {
-					console.debug.apply(console,[message,args]);
-				}
-				else {
-					console.log.apply(console,[message,args]);
-				}
-			}
-			else {
-				message = ("\n"+arguments[0]+"\n");
-			}
-
-			// Write to log
-			for ( i=1,n=arguments.length; i<n; ++i ) {
-				arg = arguments[i];
-				if ( typeof arg === 'object' && typeof JSON !== 'undefined' ) {
-					try {
-						arg = JSON.stringify(arg);
-					}
-					catch ( Exception ) {
-						// Recursive Object
-					}
-				}
-				message += "\n"+arg+"\n";
-			}
-
-			// Textarea
-			if ( textarea ) {
-				textarea.value += message+"\n-----\n";
-				textarea.scrollTop = textarea.scrollHeight - textarea.clientHeight;
-			}
-			// No Textarea, No Console
-			else if ( !consoleExists ) {
-				alert(message);
-			}
-
-			// Return true
-			return true;
-		};
-
-
-		// ====================================================================
-		// Emulated Status
-
-		/**
-		 * History.getInternetExplorerMajorVersion()
-		 * Get's the major version of Internet Explorer
-		 * @return {integer}
-		 * @license Public Domain
-		 * @author Benjamin Arthur Lupton <contact@balupton.com>
-		 * @author James Padolsey <https://gist.github.com/527683>
-		 */
-		History.getInternetExplorerMajorVersion = function(){
-			var result = History.getInternetExplorerMajorVersion.cached =
-					(typeof History.getInternetExplorerMajorVersion.cached !== 'undefined')
-				?	History.getInternetExplorerMajorVersion.cached
-				:	(function(){
-						var v = 3,
-								div = document.createElement('div'),
-								all = div.getElementsByTagName('i');
-						while ( (div.innerHTML = '<!--[if gt IE ' + (++v) + ']><i></i><![endif]-->') && all[0] ) {}
-						return (v > 4) ? v : false;
-					})()
-				;
-			return result;
-		};
-
-		/**
-		 * History.isInternetExplorer()
-		 * Are we using Internet Explorer?
-		 * @return {boolean}
-		 * @license Public Domain
-		 * @author Benjamin Arthur Lupton <contact@balupton.com>
-		 */
-		History.isInternetExplorer = function(){
-			var result =
-				History.isInternetExplorer.cached =
-				(typeof History.isInternetExplorer.cached !== 'undefined')
-					?	History.isInternetExplorer.cached
-					:	Boolean(History.getInternetExplorerMajorVersion())
-				;
-			return result;
-		};
-
-		/**
-		 * History.emulated
-		 * Which features require emulating?
-		 */
-		History.emulated = {
-			pushState: !Boolean(
-				window.history && window.history.pushState && window.history.replaceState
-				&& !(
-					(/ Mobile\/([1-7][a-z]|(8([abcde]|f(1[0-8]))))/i).test(navigator.userAgent) /* disable for versions of iOS before version 4.3 (8F190) */
-					|| (/AppleWebKit\/5([0-2]|3[0-2])/i).test(navigator.userAgent) /* disable for the mercury iOS browser, or at least older versions of the webkit engine */
-				)
-			),
-			hashChange: Boolean(
-				!(('onhashchange' in window) || ('onhashchange' in document))
-				||
-				(History.isInternetExplorer() && History.getInternetExplorerMajorVersion() < 8)
-			)
-		};
-
-		/**
-		 * History.enabled
-		 * Is History enabled?
-		 */
-		History.enabled = !History.emulated.pushState;
-
-		/**
-		 * History.bugs
-		 * Which bugs are present
-		 */
-		History.bugs = {
-			/**
-			 * Safari 5 and Safari iOS 4 fail to return to the correct state once a hash is replaced by a `replaceState` call
-			 * https://bugs.webkit.org/show_bug.cgi?id=56249
-			 */
-			setHash: Boolean(!History.emulated.pushState && navigator.vendor === 'Apple Computer, Inc.' && /AppleWebKit\/5([0-2]|3[0-3])/.test(navigator.userAgent)),
-
-			/**
-			 * Safari 5 and Safari iOS 4 sometimes fail to apply the state change under busy conditions
-			 * https://bugs.webkit.org/show_bug.cgi?id=42940
-			 */
-			safariPoll: Boolean(!History.emulated.pushState && navigator.vendor === 'Apple Computer, Inc.' && /AppleWebKit\/5([0-2]|3[0-3])/.test(navigator.userAgent)),
-
-			/**
-			 * MSIE 6 and 7 sometimes do not apply a hash even it was told to (requiring a second call to the apply function)
-			 */
-			ieDoubleCheck: Boolean(History.isInternetExplorer() && History.getInternetExplorerMajorVersion() < 8),
-
-			/**
-			 * MSIE 6 requires the entire hash to be encoded for the hashes to trigger the onHashChange event
-			 */
-			hashEscape: Boolean(History.isInternetExplorer() && History.getInternetExplorerMajorVersion() < 7)
-		};
-
-		/**
-		 * History.isEmptyObject(obj)
-		 * Checks to see if the Object is Empty
-		 * @param {Object} obj
-		 * @return {boolean}
-		 */
-		History.isEmptyObject = function(obj) {
-			for ( var name in obj ) {
-				return false;
-			}
-			return true;
-		};
-
-		/**
-		 * History.cloneObject(obj)
-		 * Clones a object and eliminate all references to the original contexts
-		 * @param {Object} obj
-		 * @return {Object}
-		 */
-		History.cloneObject = function(obj) {
-			var hash,newObj;
-			if ( obj ) {
-				hash = JSON.stringify(obj);
-				newObj = JSON.parse(hash);
-			}
-			else {
-				newObj = {};
-			}
-			return newObj;
-		};
-
-
-		// ====================================================================
-		// URL Helpers
-
-		/**
-		 * History.getRootUrl()
-		 * Turns "http://mysite.com/dir/page.html?asd" into "http://mysite.com"
-		 * @return {String} rootUrl
-		 */
-		History.getRootUrl = function(){
-			// Create
-			var rootUrl = document.location.protocol+'//'+(document.location.hostname||document.location.host);
-			if ( document.location.port||false ) {
-				rootUrl += ':'+document.location.port;
-			}
-			rootUrl += '/';
-
-			// Return
-			return rootUrl;
-		};
-
-		/**
-		 * History.getBaseHref()
-		 * Fetches the `href` attribute of the `<base href="...">` element if it exists
-		 * @return {String} baseHref
-		 */
-		History.getBaseHref = function(){
-			// Create
-			var
-				baseElements = document.getElementsByTagName('base'),
-				baseElement = null,
-				baseHref = '';
-
-			// Test for Base Element
-			if ( baseElements.length === 1 ) {
-				// Prepare for Base Element
-				baseElement = baseElements[0];
-				baseHref = baseElement.href.replace(/[^\/]+$/,'');
-			}
-
-			// Adjust trailing slash
-			baseHref = baseHref.replace(/\/+$/,'');
-			if ( baseHref ) baseHref += '/';
-
-			// Return
-			return baseHref;
-		};
-
-		/**
-		 * History.getBaseUrl()
-		 * Fetches the baseHref or basePageUrl or rootUrl (whichever one exists first)
-		 * @return {String} baseUrl
-		 */
-		History.getBaseUrl = function(){
-			// Create
-			var baseUrl = History.getBaseHref()||History.getBasePageUrl()||History.getRootUrl();
-
-			// Return
-			return baseUrl;
-		};
-
-		/**
-		 * History.getPageUrl()
-		 * Fetches the URL of the current page
-		 * @return {String} pageUrl
-		 */
-		History.getPageUrl = function(){
-			// Fetch
-			var
-				State = History.getState(false,false),
-				stateUrl = (State||{}).url||document.location.href,
-				pageUrl;
-
-			// Create
-			pageUrl = stateUrl.replace(/\/+$/,'').replace(/[^\/]+$/,function(part,index,string){
-				return (/\./).test(part) ? part : part+'/';
-			});
-
-			// Return
-			return pageUrl;
-		};
-
-		/**
-		 * History.getBasePageUrl()
-		 * Fetches the Url of the directory of the current page
-		 * @return {String} basePageUrl
-		 */
-		History.getBasePageUrl = function(){
-			// Create
-			var basePageUrl = document.location.href.replace(/[#\?].*/,'').replace(/[^\/]+$/,function(part,index,string){
-				return (/[^\/]$/).test(part) ? '' : part;
-			}).replace(/\/+$/,'')+'/';
-
-			// Return
-			return basePageUrl;
-		};
-
-		/**
-		 * History.getFullUrl(url)
-		 * Ensures that we have an absolute URL and not a relative URL
-		 * @param {string} url
-		 * @param {Boolean} allowBaseHref
-		 * @return {string} fullUrl
-		 */
-		History.getFullUrl = function(url,allowBaseHref){
-			// Prepare
-			var fullUrl = url, firstChar = url.substring(0,1);
-			allowBaseHref = (typeof allowBaseHref === 'undefined') ? true : allowBaseHref;
-
-			// Check
-			if ( /[a-z]+\:\/\//.test(url) ) {
-				// Full URL
-			}
-			else if ( firstChar === '/' ) {
-				// Root URL
-				fullUrl = History.getRootUrl()+url.replace(/^\/+/,'');
-			}
-			else if ( firstChar === '#' ) {
-				// Anchor URL
-				fullUrl = History.getPageUrl().replace(/#.*/,'')+url;
-			}
-			else if ( firstChar === '?' ) {
-				// Query URL
-				fullUrl = History.getPageUrl().replace(/[\?#].*/,'')+url;
-			}
-			else {
-				// Relative URL
-				if ( allowBaseHref ) {
-					fullUrl = History.getBaseUrl()+url.replace(/^(\.\/)+/,'');
-				} else {
-					fullUrl = History.getBasePageUrl()+url.replace(/^(\.\/)+/,'');
-				}
-				// We have an if condition above as we do not want hashes
-				// which are relative to the baseHref in our URLs
-				// as if the baseHref changes, then all our bookmarks
-				// would now point to different locations
-				// whereas the basePageUrl will always stay the same
-			}
-
-			// Return
-			return fullUrl.replace(/\#$/,'');
-		};
-
-		/**
-		 * History.getShortUrl(url)
-		 * Ensures that we have a relative URL and not a absolute URL
-		 * @param {string} url
-		 * @return {string} url
-		 */
-		History.getShortUrl = function(url){
-			// Prepare
-			var shortUrl = url, baseUrl = History.getBaseUrl(), rootUrl = History.getRootUrl();
-
-			// Trim baseUrl
-			if ( History.emulated.pushState ) {
-				// We are in a if statement as when pushState is not emulated
-				// The actual url these short urls are relative to can change
-				// So within the same session, we the url may end up somewhere different
-				shortUrl = shortUrl.replace(baseUrl,'');
-			}
-
-			// Trim rootUrl
-			shortUrl = shortUrl.replace(rootUrl,'/');
-
-			// Ensure we can still detect it as a state
-			if ( History.isTraditionalAnchor(shortUrl) ) {
-				shortUrl = './'+shortUrl;
-			}
-
-			// Clean It
-			shortUrl = shortUrl.replace(/^(\.\/)+/g,'./').replace(/\#$/,'');
-
-			// Return
-			return shortUrl;
-		};
-
-
-		// ====================================================================
-		// State Storage
-
-		/**
-		 * History.store
-		 * The store for all session specific data
-		 */
-		History.store = {};
-
-		/**
-		 * History.idToState
-		 * 1-1: State ID to State Object
-		 */
-		History.idToState = History.idToState||{};
-
-		/**
-		 * History.stateToId
-		 * 1-1: State String to State ID
-		 */
-		History.stateToId = History.stateToId||{};
-
-		/**
-		 * History.urlToId
-		 * 1-1: State URL to State ID
-		 */
-		History.urlToId = History.urlToId||{};
-
-		/**
-		 * History.storedStates
-		 * Store the states in an array
-		 */
-		History.storedStates = History.storedStates||[];
-
-		/**
-		 * History.savedStates
-		 * Saved the states in an array
-		 */
-		History.savedStates = History.savedStates||[];
-
-		/**
-		 * History.noramlizeStore()
-		 * Noramlize the store by adding necessary values
-		 */
-		History.normalizeStore = function(){
-			History.store.idToState = History.store.idToState||{};
-			History.store.urlToId = History.store.urlToId||{};
-			History.store.stateToId = History.store.stateToId||{};
-		};
-
-		/**
-		 * History.getState()
-		 * Get an object containing the data, title and url of the current state
-		 * @param {Boolean} friendly
-		 * @param {Boolean} create
-		 * @return {Object} State
-		 */
-		History.getState = function(friendly,create){
-			// Prepare
-			if ( typeof friendly === 'undefined' ) { friendly = true; }
-			if ( typeof create === 'undefined' ) { create = true; }
-
-			// Fetch
-			var State = History.getLastSavedState();
-
-			// Create
-			if ( !State && create ) {
-				State = History.createStateObject();
-			}
-
-			// Adjust
-			if ( friendly ) {
-				State = History.cloneObject(State);
-				State.url = State.cleanUrl||State.url;
-			}
-
-			// Return
-			return State;
-		};
-
-		/**
-		 * History.getIdByState(State)
-		 * Gets a ID for a State
-		 * @param {State} newState
-		 * @return {String} id
-		 */
-		History.getIdByState = function(newState){
-
-			// Fetch ID
-			var id = History.extractId(newState.url),
-				str;
-			
-			if ( !id ) {
-				// Find ID via State String
-				str = History.getStateString(newState);
-				if ( typeof History.stateToId[str] !== 'undefined' ) {
-					id = History.stateToId[str];
-				}
-				else if ( typeof History.store.stateToId[str] !== 'undefined' ) {
-					id = History.store.stateToId[str];
-				}
-				else {
-					// Generate a new ID
-					while ( true ) {
-						id = (new Date()).getTime() + String(Math.random()).replace(/\D/g,'');
-						if ( typeof History.idToState[id] === 'undefined' && typeof History.store.idToState[id] === 'undefined' ) {
-							break;
-						}
-					}
-
-					// Apply the new State to the ID
-					History.stateToId[str] = id;
-					History.idToState[id] = newState;
-				}
-			}
-
-			// Return ID
-			return id;
-		};
-
-		/**
-		 * History.normalizeState(State)
-		 * Expands a State Object
-		 * @param {object} State
-		 * @return {object}
-		 */
-		History.normalizeState = function(oldState){
-			// Variables
-			var newState, dataNotEmpty;
-
-			// Prepare
-			if ( !oldState || (typeof oldState !== 'object') ) {
-				oldState = {};
-			}
-
-			// Check
-			if ( typeof oldState.normalized !== 'undefined' ) {
-				return oldState;
-			}
-
-			// Adjust
-			if ( !oldState.data || (typeof oldState.data !== 'object') ) {
-				oldState.data = {};
-			}
-
-			// ----------------------------------------------------------------
-
-			// Create
-			newState = {};
-			newState.normalized = true;
-			newState.title = oldState.title||'';
-			newState.url = History.getFullUrl(History.unescapeString(oldState.url||document.location.href));
-			newState.hash = History.getShortUrl(newState.url);
-			newState.data = History.cloneObject(oldState.data);
-
-			// Fetch ID
-			newState.id = History.getIdByState(newState);
-
-			// ----------------------------------------------------------------
-
-			// Clean the URL
-			newState.cleanUrl = newState.url.replace(/\??\&_suid.*/,'');
-			newState.url = newState.cleanUrl;
-
-			// Check to see if we have more than just a url
-			dataNotEmpty = !History.isEmptyObject(newState.data);
-
-			// Apply
-			if ( newState.title || dataNotEmpty ) {
-				// Add ID to Hash
-				newState.hash = History.getShortUrl(newState.url).replace(/\??\&_suid.*/,'');
-				if ( !/\?/.test(newState.hash) ) {
-					newState.hash += '?';
-				}
-				newState.hash += '&_suid='+newState.id;
-			}
-
-			// Create the Hashed URL
-			newState.hashedUrl = History.getFullUrl(newState.hash);
-
-			// ----------------------------------------------------------------
-
-			// Update the URL if we have a duplicate
-			if ( (History.emulated.pushState || History.bugs.safariPoll) && History.hasUrlDuplicate(newState) ) {
-				newState.url = newState.hashedUrl;
-			}
-
-			// ----------------------------------------------------------------
-
-			// Return
-			return newState;
-		};
-
-		/**
-		 * History.createStateObject(data,title,url)
-		 * Creates a object based on the data, title and url state params
-		 * @param {object} data
-		 * @param {string} title
-		 * @param {string} url
-		 * @return {object}
-		 */
-		History.createStateObject = function(data,title,url){
-			// Hashify
-			var State = {
-				'data': data,
-				'title': title,
-				'url': url
-			};
-
-			// Expand the State
-			State = History.normalizeState(State);
-
-			// Return object
-			return State;
-		};
-
-		/**
-		 * History.getStateById(id)
-		 * Get a state by it's UID
-		 * @param {String} id
-		 */
-		History.getStateById = function(id){
-			// Prepare
-			id = String(id);
-
-			// Retrieve
-			var State = History.idToState[id] || History.store.idToState[id] || undefined;
-
-			// Return State
-			return State;
-		};
-
-		/**
-		 * Get a State's String
-		 * @param {State} passedState
-		 */
-		History.getStateString = function(passedState){
-			// Prepare
-			var State, cleanedState, str;
-
-			// Fetch
-			State = History.normalizeState(passedState);
-
-			// Clean
-			cleanedState = {
-				data: State.data,
-				title: passedState.title,
-				url: passedState.url
-			};
-
-			// Fetch
-			str = JSON.stringify(cleanedState);
-
-			// Return
-			return str;
-		};
-
-		/**
-		 * Get a State's ID
-		 * @param {State} passedState
-		 * @return {String} id
-		 */
-		History.getStateId = function(passedState){
-			// Prepare
-			var State, id;
-			
-			// Fetch
-			State = History.normalizeState(passedState);
-
-			// Fetch
-			id = State.id;
-
-			// Return
-			return id;
-		};
-
-		/**
-		 * History.getHashByState(State)
-		 * Creates a Hash for the State Object
-		 * @param {State} passedState
-		 * @return {String} hash
-		 */
-		History.getHashByState = function(passedState){
-			// Prepare
-			var State, hash;
-			
-			// Fetch
-			State = History.normalizeState(passedState);
-
-			// Hash
-			hash = State.hash;
-
-			// Return
-			return hash;
-		};
-
-		/**
-		 * History.extractId(url_or_hash)
-		 * Get a State ID by it's URL or Hash
-		 * @param {string} url_or_hash
-		 * @return {string} id
-		 */
-		History.extractId = function ( url_or_hash ) {
-			// Prepare
-			var id,parts,url;
-
-			// Extract
-			parts = /(.*)\&_suid=([0-9]+)$/.exec(url_or_hash);
-			url = parts ? (parts[1]||url_or_hash) : url_or_hash;
-			id = parts ? String(parts[2]||'') : '';
-
-			// Return
-			return id||false;
-		};
-
-		/**
-		 * History.isTraditionalAnchor
-		 * Checks to see if the url is a traditional anchor or not
-		 * @param {String} url_or_hash
-		 * @return {Boolean}
-		 */
-		History.isTraditionalAnchor = function(url_or_hash){
-			// Check
-			var isTraditional = !(/[\/\?\.]/.test(url_or_hash));
-
-			// Return
-			return isTraditional;
-		};
-
-		/**
-		 * History.extractState
-		 * Get a State by it's URL or Hash
-		 * @param {String} url_or_hash
-		 * @return {State|null}
-		 */
-		History.extractState = function(url_or_hash,create){
-			// Prepare
-			var State = null, id, url;
-			create = create||false;
-
-			// Fetch SUID
-			id = History.extractId(url_or_hash);
-			if ( id ) {
-				State = History.getStateById(id);
-			}
-
-			// Fetch SUID returned no State
-			if ( !State ) {
-				// Fetch URL
-				url = History.getFullUrl(url_or_hash);
-
-				// Check URL
-				id = History.getIdByUrl(url)||false;
-				if ( id ) {
-					State = History.getStateById(id);
-				}
-
-				// Create State
-				if ( !State && create && !History.isTraditionalAnchor(url_or_hash) ) {
-					State = History.createStateObject(null,null,url);
-				}
-			}
-
-			// Return
-			return State;
-		};
-
-		/**
-		 * History.getIdByUrl()
-		 * Get a State ID by a State URL
-		 */
-		History.getIdByUrl = function(url){
-			// Fetch
-			var id = History.urlToId[url] || History.store.urlToId[url] || undefined;
-
-			// Return
-			return id;
-		};
-
-		/**
-		 * History.getLastSavedState()
-		 * Get an object containing the data, title and url of the current state
-		 * @return {Object} State
-		 */
-		History.getLastSavedState = function(){
-			return History.savedStates[History.savedStates.length-1]||undefined;
-		};
-
-		/**
-		 * History.getLastStoredState()
-		 * Get an object containing the data, title and url of the current state
-		 * @return {Object} State
-		 */
-		History.getLastStoredState = function(){
-			return History.storedStates[History.storedStates.length-1]||undefined;
-		};
-
-		/**
-		 * History.hasUrlDuplicate
-		 * Checks if a Url will have a url conflict
-		 * @param {Object} newState
-		 * @return {Boolean} hasDuplicate
-		 */
-		History.hasUrlDuplicate = function(newState) {
-			// Prepare
-			var hasDuplicate = false,
-				oldState;
-
-			// Fetch
-			oldState = History.extractState(newState.url);
-
-			// Check
-			hasDuplicate = oldState && oldState.id !== newState.id;
-
-			// Return
-			return hasDuplicate;
-		};
-
-		/**
-		 * History.storeState
-		 * Store a State
-		 * @param {Object} newState
-		 * @return {Object} newState
-		 */
-		History.storeState = function(newState){
-			// Store the State
-			History.urlToId[newState.url] = newState.id;
-
-			// Push the State
-			History.storedStates.push(History.cloneObject(newState));
-
-			// Return newState
-			return newState;
-		};
-
-		/**
-		 * History.isLastSavedState(newState)
-		 * Tests to see if the state is the last state
-		 * @param {Object} newState
-		 * @return {boolean} isLast
-		 */
-		History.isLastSavedState = function(newState){
-			// Prepare
-			var isLast = false,
-				newId, oldState, oldId;
-
-			// Check
-			if ( History.savedStates.length ) {
-				newId = newState.id;
-				oldState = History.getLastSavedState();
-				oldId = oldState.id;
-
-				// Check
-				isLast = (newId === oldId);
-			}
-
-			// Return
-			return isLast;
-		};
-
-		/**
-		 * History.saveState
-		 * Push a State
-		 * @param {Object} newState
-		 * @return {boolean} changed
-		 */
-		History.saveState = function(newState){
-			// Check Hash
-			if ( History.isLastSavedState(newState) ) {
-				return false;
-			}
-
-			// Push the State
-			History.savedStates.push(History.cloneObject(newState));
-
-			// Return true
-			return true;
-		};
-
-		/**
-		 * History.getStateByIndex()
-		 * Gets a state by the index
-		 * @param {integer} index
-		 * @return {Object}
-		 */
-		History.getStateByIndex = function(index){
-			// Prepare
-			var State = null;
-
-			// Handle
-			if ( typeof index === 'undefined' ) {
-				// Get the last inserted
-				State = History.savedStates[History.savedStates.length-1];
-			}
-			else if ( index < 0 ) {
-				// Get from the end
-				State = History.savedStates[History.savedStates.length+index];
-			}
-			else {
-				// Get from the beginning
-				State = History.savedStates[index];
-			}
-
-			// Return State
-			return State;
-		};
-
-
-		// ====================================================================
-		// Hash Helpers
-
-		/**
-		 * History.getHash()
-		 * Gets the current document hash
-		 * @return {string}
-		 */
-		History.getHash = function(){
-			var hash = History.unescapeHash(document.location.hash);
-			return hash;
-		};
-
-		/**
-		 * History.unescapeString()
-		 * Unescape a string
-		 * @param {String} str
-		 * @return {string}
-		 */
-		History.unescapeString = function(str){
-			// Prepare
-			var result = str,
-				tmp;
-
-			// Unescape hash
-			while ( true ) {
-				tmp = window.unescape(result);
-				if ( tmp === result ) {
-					break;
-				}
-				result = tmp;
-			}
-
-			// Return result
-			return result;
-		};
-
-		/**
-		 * History.unescapeHash()
-		 * normalize and Unescape a Hash
-		 * @param {String} hash
-		 * @return {string}
-		 */
-		History.unescapeHash = function(hash){
-			// Prepare
-			var result = History.normalizeHash(hash);
-
-			// Unescape hash
-			result = History.unescapeString(result);
-
-			// Return result
-			return result;
-		};
-
-		/**
-		 * History.normalizeHash()
-		 * normalize a hash across browsers
-		 * @return {string}
-		 */
-		History.normalizeHash = function(hash){
-			// Prepare
-			var result = hash.replace(/[^#]*#/,'').replace(/#.*/, '');
-
-			// Return result
-			return result;
-		};
-
-		/**
-		 * History.setHash(hash)
-		 * Sets the document hash
-		 * @param {string} hash
-		 * @return {History}
-		 */
-		History.setHash = function(hash,queue){
-			// Prepare
-			var adjustedHash, State, pageUrl;
-
-			// Handle Queueing
-			if ( queue !== false && History.busy() ) {
-				// Wait + Push to Queue
-				//History.debug('History.setHash: we must wait', arguments);
-				History.pushQueue({
-					scope: History,
-					callback: History.setHash,
-					args: arguments,
-					queue: queue
-				});
-				return false;
-			}
-
-			// Log
-			//History.debug('History.setHash: called',hash);
-
-			// Prepare
-			adjustedHash = History.escapeHash(hash);
-
-			// Make Busy + Continue
-			History.busy(true);
-
-			// Check if hash is a state
-			State = History.extractState(hash,true);
-			if ( State && !History.emulated.pushState ) {
-				// Hash is a state so skip the setHash
-				//History.debug('History.setHash: Hash is a state so skipping the hash set with a direct pushState call',arguments);
-
-				// PushState
-				History.pushState(State.data,State.title,State.url,false);
-			}
-			else if ( document.location.hash !== adjustedHash ) {
-				// Hash is a proper hash, so apply it
-
-				// Handle browser bugs
-				if ( History.bugs.setHash ) {
-					// Fix Safari Bug https://bugs.webkit.org/show_bug.cgi?id=56249
-
-					// Fetch the base page
-					pageUrl = History.getPageUrl();
-
-					// Safari hash apply
-					History.pushState(null,null,pageUrl+'#'+adjustedHash,false);
-				}
-				else {
-					// Normal hash apply
-					document.location.hash = adjustedHash;
-				}
-			}
-
-			// Chain
-			return History;
-		};
-
-		/**
-		 * History.escape()
-		 * normalize and Escape a Hash
-		 * @return {string}
-		 */
-		History.escapeHash = function(hash){
-			// Prepare
-			var result = History.normalizeHash(hash);
-
-			// Escape hash
-			result = window.escape(result);
-
-			// IE6 Escape Bug
-			if ( !History.bugs.hashEscape ) {
-				// Restore common parts
-				result = result
-					.replace(/\%21/g,'!')
-					.replace(/\%26/g,'&')
-					.replace(/\%3D/g,'=')
-					.replace(/\%3F/g,'?');
-			}
-
-			// Return result
-			return result;
-		};
-
-		/**
-		 * History.getHashByUrl(url)
-		 * Extracts the Hash from a URL
-		 * @param {string} url
-		 * @return {string} url
-		 */
-		History.getHashByUrl = function(url){
-			// Extract the hash
-			var hash = String(url)
-				.replace(/([^#]*)#?([^#]*)#?(.*)/, '$2')
-				;
-
-			// Unescape hash
-			hash = History.unescapeHash(hash);
-
-			// Return hash
-			return hash;
-		};
-
-		/**
-		 * History.setTitle(title)
-		 * Applies the title to the document
-		 * @param {State} newState
-		 * @return {Boolean}
-		 */
-		History.setTitle = function(newState){
-			// Prepare
-			var title = newState.title,
-				firstState;
-
-			// Initial
-			if ( !title ) {
-				firstState = History.getStateByIndex(0);
-				if ( firstState && firstState.url === newState.url ) {
-					title = firstState.title||History.options.initialTitle;
-				}
-			}
-
-			// Apply
-			try {
-				document.getElementsByTagName('title')[0].innerHTML = title.replace('<','&lt;').replace('>','&gt;').replace(' & ',' &amp; ');
-			}
-			catch ( Exception ) { }
-			document.title = title;
-
-			// Chain
-			return History;
-		};
-
-
-		// ====================================================================
-		// Queueing
-
-		/**
-		 * History.queues
-		 * The list of queues to use
-		 * First In, First Out
-		 */
-		History.queues = [];
-
-		/**
-		 * History.busy(value)
-		 * @param {boolean} value [optional]
-		 * @return {boolean} busy
-		 */
-		History.busy = function(value){
-			// Apply
-			if ( typeof value !== 'undefined' ) {
-				//History.debug('History.busy: changing ['+(History.busy.flag||false)+'] to ['+(value||false)+']', History.queues.length);
-				History.busy.flag = value;
-			}
-			// Default
-			else if ( typeof History.busy.flag === 'undefined' ) {
-				History.busy.flag = false;
-			}
-
-			// Queue
-			if ( !History.busy.flag ) {
-				// Execute the next item in the queue
-				clearTimeout(History.busy.timeout);
-				var fireNext = function(){
-					var i, queue, item;
-					if ( History.busy.flag ) return;
-					for ( i=History.queues.length-1; i >= 0; --i ) {
-						queue = History.queues[i];
-						if ( queue.length === 0 ) continue;
-						item = queue.shift();
-						History.fireQueueItem(item);
-						History.busy.timeout = setTimeout(fireNext,History.options.busyDelay);
-					}
-				};
-				History.busy.timeout = setTimeout(fireNext,History.options.busyDelay);
-			}
-
-			// Return
-			return History.busy.flag;
-		};
-
-		/**
-		 * History.busy.flag
-		 */
-		History.busy.flag = false;
-
-		/**
-		 * History.fireQueueItem(item)
-		 * Fire a Queue Item
-		 * @param {Object} item
-		 * @return {Mixed} result
-		 */
-		History.fireQueueItem = function(item){
-			return item.callback.apply(item.scope||History,item.args||[]);
-		};
-
-		/**
-		 * History.pushQueue(callback,args)
-		 * Add an item to the queue
-		 * @param {Object} item [scope,callback,args,queue]
-		 */
-		History.pushQueue = function(item){
-			// Prepare the queue
-			History.queues[item.queue||0] = History.queues[item.queue||0]||[];
-
-			// Add to the queue
-			History.queues[item.queue||0].push(item);
-
-			// Chain
-			return History;
-		};
-
-		/**
-		 * History.queue (item,queue), (func,queue), (func), (item)
-		 * Either firs the item now if not busy, or adds it to the queue
-		 */
-		History.queue = function(item,queue){
-			// Prepare
-			if ( typeof item === 'function' ) {
-				item = {
-					callback: item
-				};
-			}
-			if ( typeof queue !== 'undefined' ) {
-				item.queue = queue;
-			}
-
-			// Handle
-			if ( History.busy() ) {
-				History.pushQueue(item);
-			} else {
-				History.fireQueueItem(item);
-			}
-
-			// Chain
-			return History;
-		};
-
-		/**
-		 * History.clearQueue()
-		 * Clears the Queue
-		 */
-		History.clearQueue = function(){
-			History.busy.flag = false;
-			History.queues = [];
-			return History;
-		};
-
-
-		// ====================================================================
-		// IE Bug Fix
-
-		/**
-		 * History.stateChanged
-		 * States whether or not the state has changed since the last double check was initialised
-		 */
-		History.stateChanged = false;
-
-		/**
-		 * History.doubleChecker
-		 * Contains the timeout used for the double checks
-		 */
-		History.doubleChecker = false;
-
-		/**
-		 * History.doubleCheckComplete()
-		 * Complete a double check
-		 * @return {History}
-		 */
-		History.doubleCheckComplete = function(){
-			// Update
-			History.stateChanged = true;
-
-			// Clear
-			History.doubleCheckClear();
-
-			// Chain
-			return History;
-		};
-
-		/**
-		 * History.doubleCheckClear()
-		 * Clear a double check
-		 * @return {History}
-		 */
-		History.doubleCheckClear = function(){
-			// Clear
-			if ( History.doubleChecker ) {
-				clearTimeout(History.doubleChecker);
-				History.doubleChecker = false;
-			}
-
-			// Chain
-			return History;
-		};
-
-		/**
-		 * History.doubleCheck()
-		 * Create a double check
-		 * @return {History}
-		 */
-		History.doubleCheck = function(tryAgain){
-			// Reset
-			History.stateChanged = false;
-			History.doubleCheckClear();
-
-			// Fix IE6,IE7 bug where calling history.back or history.forward does not actually change the hash (whereas doing it manually does)
-			// Fix Safari 5 bug where sometimes the state does not change: https://bugs.webkit.org/show_bug.cgi?id=42940
-			if ( History.bugs.ieDoubleCheck ) {
-				// Apply Check
-				History.doubleChecker = setTimeout(
-					function(){
-						History.doubleCheckClear();
-						if ( !History.stateChanged ) {
-							//History.debug('History.doubleCheck: State has not yet changed, trying again', arguments);
-							// Re-Attempt
-							tryAgain();
-						}
-						return true;
-					},
-					History.options.doubleCheckInterval
-				);
-			}
-
-			// Chain
-			return History;
-		};
-
-
-		// ====================================================================
-		// Safari Bug Fix
-
-		/**
-		 * History.safariStatePoll()
-		 * Poll the current state
-		 * @return {History}
-		 */
-		History.safariStatePoll = function(){
-			// Poll the URL
-
-			// Get the Last State which has the new URL
-			var
-				urlState = History.extractState(document.location.href),
-				newState;
-
-			// Check for a difference
-			if ( !History.isLastSavedState(urlState) ) {
-				newState = urlState;
-			}
-			else {
-				return;
-			}
-
-			// Check if we have a state with that url
-			// If not create it
-			if ( !newState ) {
-				//History.debug('History.safariStatePoll: new');
-				newState = History.createStateObject();
-			}
-
-			// Apply the New State
-			//History.debug('History.safariStatePoll: trigger');
-			History.Adapter.trigger(window,'popstate');
-
-			// Chain
-			return History;
-		};
-
-
-		// ====================================================================
-		// State Aliases
-
-		/**
-		 * History.back(queue)
-		 * Send the browser history back one item
-		 * @param {Integer} queue [optional]
-		 */
-		History.back = function(queue){
-			//History.debug('History.back: called', arguments);
-
-			// Handle Queueing
-			if ( queue !== false && History.busy() ) {
-				// Wait + Push to Queue
-				//History.debug('History.back: we must wait', arguments);
-				History.pushQueue({
-					scope: History,
-					callback: History.back,
-					args: arguments,
-					queue: queue
-				});
-				return false;
-			}
-
-			// Make Busy + Continue
-			History.busy(true);
-
-			// Fix certain browser bugs that prevent the state from changing
-			History.doubleCheck(function(){
-				History.back(false);
-			});
-
-			// Go back
-			history.go(-1);
-
-			// End back closure
-			return true;
-		};
-
-		/**
-		 * History.forward(queue)
-		 * Send the browser history forward one item
-		 * @param {Integer} queue [optional]
-		 */
-		History.forward = function(queue){
-			//History.debug('History.forward: called', arguments);
-
-			// Handle Queueing
-			if ( queue !== false && History.busy() ) {
-				// Wait + Push to Queue
-				//History.debug('History.forward: we must wait', arguments);
-				History.pushQueue({
-					scope: History,
-					callback: History.forward,
-					args: arguments,
-					queue: queue
-				});
-				return false;
-			}
-
-			// Make Busy + Continue
-			History.busy(true);
-
-			// Fix certain browser bugs that prevent the state from changing
-			History.doubleCheck(function(){
-				History.forward(false);
-			});
-
-			// Go forward
-			history.go(1);
-
-			// End forward closure
-			return true;
-		};
-
-		/**
-		 * History.go(index,queue)
-		 * Send the browser history back or forward index times
-		 * @param {Integer} queue [optional]
-		 */
-		History.go = function(index,queue){
-			//History.debug('History.go: called', arguments);
-
-			// Prepare
-			var i;
-
-			// Handle
-			if ( index > 0 ) {
-				// Forward
-				for ( i=1; i<=index; ++i ) {
-					History.forward(queue);
-				}
-			}
-			else if ( index < 0 ) {
-				// Backward
-				for ( i=-1; i>=index; --i ) {
-					History.back(queue);
-				}
-			}
-			else {
-				throw new Error('History.go: History.go requires a positive or negative integer passed.');
-			}
-
-			// Chain
-			return History;
-		};
-
-
-		// ====================================================================
-		// HTML5 State Support
-
-		// Non-Native pushState Implementation
-		if ( History.emulated.pushState ) {
-			/*
-			 * Provide Skeleton for HTML4 Browsers
-			 */
-
-			// Prepare
-			var emptyFunction = function(){};
-			History.pushState = History.pushState||emptyFunction;
-			History.replaceState = History.replaceState||emptyFunction;
-		} // History.emulated.pushState
-
-		// Native pushState Implementation
-		else {
-			/*
-			 * Use native HTML5 History API Implementation
-			 */
-
-			/**
-			 * History.onPopState(event,extra)
-			 * Refresh the Current State
-			 */
-			History.onPopState = function(event,extra){
-				// Prepare
-				var stateId = false, newState = false, currentHash, currentState;
-
-				// Reset the double check
-				History.doubleCheckComplete();
-
-				// Check for a Hash, and handle apporiatly
-				currentHash	= History.getHash();
-				if ( currentHash ) {
-					// Expand Hash
-					currentState = History.extractState(currentHash||document.location.href,true);
-					if ( currentState ) {
-						// We were able to parse it, it must be a State!
-						// Let's forward to replaceState
-						//History.debug('History.onPopState: state anchor', currentHash, currentState);
-						History.replaceState(currentState.data, currentState.title, currentState.url, false);
-					}
-					else {
-						// Traditional Anchor
-						//History.debug('History.onPopState: traditional anchor', currentHash);
-						History.Adapter.trigger(window,'anchorchange');
-						History.busy(false);
-					}
-
-					// We don't care for hashes
-					History.expectedStateId = false;
-					return false;
-				}
-
-				// Ensure
-				stateId = History.Adapter.extractEventData('state',event,extra) || false;
-
-				// Fetch State
-				if ( stateId ) {
-					// Vanilla: Back/forward button was used
-					newState = History.getStateById(stateId);
-				}
-				else if ( History.expectedStateId ) {
-					// Vanilla: A new state was pushed, and popstate was called manually
-					newState = History.getStateById(History.expectedStateId);
-				}
-				else {
-					// Initial State
-					newState = History.extractState(document.location.href);
-				}
-
-				// The State did not exist in our store
-				if ( !newState ) {
-					// Regenerate the State
-					newState = History.createStateObject(null,null,document.location.href);
-				}
-
-				// Clean
-				History.expectedStateId = false;
-
-				// Check if we are the same state
-				if ( History.isLastSavedState(newState) ) {
-					// There has been no change (just the page's hash has finally propagated)
-					//History.debug('History.onPopState: no change', newState, History.savedStates);
-					History.busy(false);
-					return false;
-				}
-
-				// Store the State
-				History.storeState(newState);
-				History.saveState(newState);
-
-				// Force update of the title
-				History.setTitle(newState);
-
-				// Fire Our Event
-				History.Adapter.trigger(window,'statechange');
-				History.busy(false);
-
-				// Return true
-				return true;
-			};
-			History.Adapter.bind(window,'popstate',History.onPopState);
-
-			/**
-			 * History.pushState(data,title,url)
-			 * Add a new State to the history object, become it, and trigger onpopstate
-			 * We have to trigger for HTML4 compatibility
-			 * @param {object} data
-			 * @param {string} title
-			 * @param {string} url
-			 * @return {true}
-			 */
-			History.pushState = function(data,title,url,queue){
-				//History.debug('History.pushState: called', arguments);
-
-				// Check the State
-				if ( History.getHashByUrl(url) && History.emulated.pushState ) {
-					throw new Error('History.js does not support states with fragement-identifiers (hashes/anchors).');
-				}
-
-				// Handle Queueing
-				if ( queue !== false && History.busy() ) {
-					// Wait + Push to Queue
-					//History.debug('History.pushState: we must wait', arguments);
-					History.pushQueue({
-						scope: History,
-						callback: History.pushState,
-						args: arguments,
-						queue: queue
-					});
-					return false;
-				}
-
-				// Make Busy + Continue
-				History.busy(true);
-
-				// Create the newState
-				var newState = History.createStateObject(data,title,url);
-
-				// Check it
-				if ( History.isLastSavedState(newState) ) {
-					// Won't be a change
-					History.busy(false);
-				}
-				else {
-					// Store the newState
-					History.storeState(newState);
-					History.expectedStateId = newState.id;
-
-					// Push the newState
-					history.pushState(newState.id,newState.title,newState.url);
-
-					// Fire HTML5 Event
-					History.Adapter.trigger(window,'popstate');
-				}
-
-				// End pushState closure
-				return true;
-			};
-
-			/**
-			 * History.replaceState(data,title,url)
-			 * Replace the State and trigger onpopstate
-			 * We have to trigger for HTML4 compatibility
-			 * @param {object} data
-			 * @param {string} title
-			 * @param {string} url
-			 * @return {true}
-			 */
-			History.replaceState = function(data,title,url,queue){
-				//History.debug('History.replaceState: called', arguments);
-
-				// Check the State
-				if ( History.getHashByUrl(url) && History.emulated.pushState ) {
-					throw new Error('History.js does not support states with fragement-identifiers (hashes/anchors).');
-				}
-
-				// Handle Queueing
-				if ( queue !== false && History.busy() ) {
-					// Wait + Push to Queue
-					//History.debug('History.replaceState: we must wait', arguments);
-					History.pushQueue({
-						scope: History,
-						callback: History.replaceState,
-						args: arguments,
-						queue: queue
-					});
-					return false;
-				}
-
-				// Make Busy + Continue
-				History.busy(true);
-
-				// Create the newState
-				var newState = History.createStateObject(data,title,url);
-
-				// Check it
-				if ( History.isLastSavedState(newState) ) {
-					// Won't be a change
-					History.busy(false);
-				}
-				else {
-					// Store the newState
-					History.storeState(newState);
-					History.expectedStateId = newState.id;
-
-					// Push the newState
-					history.replaceState(newState.id,newState.title,newState.url);
-
-					// Fire HTML5 Event
-					History.Adapter.trigger(window,'popstate');
-				}
-
-				// End replaceState closure
-				return true;
-			};
-
-		} // !History.emulated.pushState
-
-
-		// ====================================================================
-		// Initialise
-
-		/**
-		 * Load the Store
-		 */
-		if ( sessionStorage ) {
-			// Fetch
-			try {
-				History.store = JSON.parse(sessionStorage.getItem('History.store'))||{};
-			}
-			catch ( err ) {
-				History.store = {};
-			}
-
-			// Normalize
-			History.normalizeStore();
-		}
-		else {
-			// Default Load
-			History.store = {};
-			History.normalizeStore();
-		}
-
-		/**
-		 * Clear Intervals on exit to prevent memory leaks
-		 */
-		History.Adapter.bind(window,"beforeunload",History.clearAllIntervals);
-		History.Adapter.bind(window,"unload",History.clearAllIntervals);
-
-		/**
-		 * Create the initial State
-		 */
-		History.saveState(History.storeState(History.extractState(document.location.href,true)));
-
-		/**
-		 * Bind for Saving Store
-		 */
-		if ( sessionStorage ) {
-			// When the page is closed
-			History.onUnload = function(){
-				// Prepare
-				var	currentStore, item;
-
-				// Fetch
-				try {
-					currentStore = JSON.parse(sessionStorage.getItem('History.store'))||{};
-				}
-				catch ( err ) {
-					currentStore = {};
-				}
-
-				// Ensure
-				currentStore.idToState = currentStore.idToState || {};
-				currentStore.urlToId = currentStore.urlToId || {};
-				currentStore.stateToId = currentStore.stateToId || {};
-
-				// Sync
-				for ( item in History.idToState ) {
-					if ( !History.idToState.hasOwnProperty(item) ) {
-						continue;
-					}
-					currentStore.idToState[item] = History.idToState[item];
-				}
-				for ( item in History.urlToId ) {
-					if ( !History.urlToId.hasOwnProperty(item) ) {
-						continue;
-					}
-					currentStore.urlToId[item] = History.urlToId[item];
-				}
-				for ( item in History.stateToId ) {
-					if ( !History.stateToId.hasOwnProperty(item) ) {
-						continue;
-					}
-					currentStore.stateToId[item] = History.stateToId[item];
-				}
-
-				// Update
-				History.store = currentStore;
-				History.normalizeStore();
-
-				// Store
-				sessionStorage.setItem('History.store',JSON.stringify(currentStore));
-			};
-
-			// For Internet Explorer
-			History.intervalList.push(setInterval(History.onUnload,History.options.storeInterval));
-			
-			// For Other Browsers
-			History.Adapter.bind(window,'beforeunload',History.onUnload);
-			History.Adapter.bind(window,'unload',History.onUnload);
-			
-			// Both are enabled for consistency
-		}
-
-		// Non-Native pushState Implementation
-		if ( !History.emulated.pushState ) {
-			// Be aware, the following is only for native pushState implementations
-			// If you are wanting to include something for all browsers
-			// Then include it above this if block
-
-			/**
-			 * Setup Safari Fix
-			 */
-			if ( History.bugs.safariPoll ) {
-				History.intervalList.push(setInterval(History.safariStatePoll, History.options.safariPollInterval));
-			}
-
-			/**
-			 * Ensure Cross Browser Compatibility
-			 */
-			if ( navigator.vendor === 'Apple Computer, Inc.' || (navigator.appCodeName||'') === 'Mozilla' ) {
-				/**
-				 * Fix Safari HashChange Issue
-				 */
-
-				// Setup Alias
-				History.Adapter.bind(window,'hashchange',function(){
-					History.Adapter.trigger(window,'popstate');
-				});
-
-				// Initialise Alias
-				if ( History.getHash() ) {
-					History.Adapter.onDomLoad(function(){
-						History.Adapter.trigger(window,'hashchange');
-					});
-				}
-			}
-
-		} // !History.emulated.pushState
-
-
-	}; // History.initCore
-
-	// Try and Initialise History
-	History.init();
-
-})(window);
 /**
  * A simple JavaScript class system
  *
  * @author     James Brumond
- * @version    0.2.2
+ * @version    0.2.1
  * @copyright  Copyright 2012 James Brumond
  * @license    Dual licensed under MIT and GPL
  */
@@ -2468,13 +37,13 @@ if (typeof JSON !== 'object') {
 			if (! inst instanceof self) {
 				throw new Error('Classes should be invoked with the new keyword.');
 			}
-			// Set the scope for super
-			inst.__scope__ = self.prototype.__scope__;
 			// This allows .apply() type expansion with constructor calls
 			var _args = arguments[0];
 			if (! (_args && _args.__shouldExpand__)) {
 				_args = arguments;
 			}
+			// Manages scope for super
+			inst.__scope__ = { };
 			// If a function was given as the constructor, it should
 			// be called every time a new instance is created
 			if (typeof constructor === 'function') {
@@ -2523,7 +92,6 @@ if (typeof JSON !== 'object') {
 		
 		// Expose the parent
 		self.parent = parent;
-		self.prototype.__scope__ = self;
 
 		// If an object was given as the constructor, the properties
 		// should be placed on the prototype
@@ -2534,22 +102,25 @@ if (typeof JSON !== 'object') {
 				// calling supers with this.method.parent(this, ...)
 				if (isFunc(self.prototype[k])) {
 					(function(method) {
-						self.prototype[method].parent = function(that) {
-							var scope = that.__scope__;
-							if (! scope) {
-								throw new Error('Could not determine super scope. Did you forget to ' +
-									'pass `this` to `.parent`?');
-							}
-							var args = slice(arguments, 1);
-							that.__scope__ = that.__scope__.parent;
-							var result = scope.parent.prototype[method].apply(that, args);
-							that.__scope__ = scope;
-							return result;
+						var func = self.prototype[method];
+
+						func.parent = function(that) {
+							return func.parentApply(that, slice(arguments, 1));
 						};
-						self.prototype[method].parentApply = function(that, args) {
-							args = slice(args);
-							args.unshift(that);
-							return self.prototype[method].parent.apply(that, args);
+
+						func.parentApply = function(that, args) {
+							var __scope__ = that.__scope__;
+							var oldScope = __scope__[method] || self;
+							var scope = __scope__[method] = oldScope.parent;
+							try {
+								return scope.prototype[method].apply(that, args);
+							} catch(e) {
+								// pass
+							} finally {
+								// We put this in a finally block to make sure the scope is
+								// always reset, even in the event of an error
+								__scope__[method] = oldScope;
+							}
 						};
 					}(k));
 				}
@@ -2651,16 +222,19 @@ if (typeof JSON !== 'object') {
 	Class.namespace = function(ns) {
 		namespace = ns ? ns : _global;
 	};
-
-	Class.isClass = function(value) {
-		return isClass(value);
-	};
 	
 	function Mixin(constructor) {
 		this.mixinTo = function(func) {
 			for (var i in constructor) {
 				if (constructor.hasOwnProperty(i)) {
 					func.prototype[i] = constructor[i];
+				}
+			}
+		};
+		this.extend = function(obj) {
+			for (var i in obj) {
+				if (obj.hasOwnProperty(i)) {
+					constructor[i] = obj[i];
 				}
 			}
 		};
@@ -2677,10 +251,6 @@ if (typeof JSON !== 'object') {
 
 	function isArray(value) {
 		return (toString.call(value) === '[object Array]');
-	}
-
-	function isClass(value) {
-		return (typeof value === 'function' && value.toString() === '[object Class]');
 	}
 
 	function slice(value, index) {
@@ -18840,7 +16410,77 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 	//
 	// This is the regex used for parsing placeholders in model URLs
 	//
-	var urlPlaceholderRegex = /\{([^}]+)\}/;
+	var urlPlaceholderRegex = /\{([^}]+)\}/g;
+
+	// 
+	// Avoid errors in older browsers and IE
+	// 
+	if (! window.console) {window.console = { };}
+	if (! window.console.log) {window.console.log = function () { };}
+
+// -------------------------------------------------------------
+//  Clean up inconsistencies between lodash and underscore
+	
+	var isLodash = (typeof _.forIn === 'function');
+	var deepClone, forIn;
+
+	// If we are using lodash..
+	if (isLodash) {
+		deepClone = function(obj) {
+			return _.clone(obj, true);
+		};
+
+		forIn = function(obj, func) {
+			return _.forIn(obj, func);
+		};
+	}
+
+	// If we are using underscore..
+	else {
+		deepClone = function(obj) {
+			if (obj === null) {return obj;}
+
+			var type = typeof obj;
+			if (type === 'object') {
+				type = varType(obj).toLowerCase();
+			}
+
+			var result;
+
+			switch (type) {
+				case 'string':
+				case 'number':
+				case 'boolean':
+				case 'undefined':
+				case 'function':
+					return obj;
+
+				case 'array':
+					return obj.slice();
+
+				case 'date':
+					result = new Date(obj.getTime());
+				break;
+
+				// If I end up needing more specificity, I can write it in later
+				default:
+					result = { };
+				break;
+			}
+
+			for (var i in obj) {
+				if (obj.hasOwnProperty(i)) {
+					result[i] = deepClone(obj[i]);
+				}
+			}
+
+			return result;
+		};
+
+		forIn = function(obj, func) {
+			return _.forEach(obj, func);
+		};
+	}
 
 // -------------------------------------------------------------
 //  AppObject Class
@@ -18855,15 +16495,16 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		// overriding method.
 		//
 		construct: function() {
-			console.log('[' + time() + '] Intializing', this.__class__, 'instance');
+			this._uuid = nextId++;
+			log('Initializing <' + this.__class__ + '#' + this._uuid + '> instance');
+
 			EventEmitter2.call(this, {
 				wildcard: true,
 				delimiter: '.'
 			});
-			this._uuid = nextId++;
-			if (typeof this.initialize === 'function') {
-				this.initialize.apply(this, arguments);
-			}
+
+			// DEBUG This is here so that build errors actually log something useful
+			this.on('error.build', function(err) { throw err; });
 		},
 
 		//
@@ -18872,7 +16513,7 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		//
 		emit: function(event) {
 			var ctorName = (this === app) ? 'app' : this.__class__;
-			console.log('[' + time() + '] ' + ctorName + ':' + event);
+			log(ctorName + ':' + event);
 			EventEmitter2.prototype.emit.apply(this, arguments);
 		},
 
@@ -18917,11 +16558,14 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 				//
 				// eg.
 				//   a.on('foo', b.reemit('.bar')) => 'foo.bar'
+				//   a.on('foo', b.reemit('bar.')) => 'bar.foo'
 				//   a.on('foo', b.reemit('bar')) => 'bar'
 				//
 				if (eventModifier) {
 					if (eventModifier[0] === '.') {
 						event += eventModifier;
+					} else if (eventModifier[eventModifier.length - 1] === '.') {
+						event = eventModifier + event;
 					} else {
 						event = eventModifier;
 					}
@@ -18930,6 +16574,37 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 				args.unshift(event);
 				self.emit.apply(self, args);
 			};
+		},
+
+		// 
+		// Emits multiple events at the same time, optionally with a set prefix
+		// 
+		// eg.
+		//   foo.emitMany('bar.', ['a', 'b', 'c']);
+		// 
+		// is the same as
+		//   foo.emit('bar.a');
+		//   foo.emit('bar.b');
+		//   foo.emit('bar.c');
+		// 
+		emitMany: function(prefix, events) {
+			if (arguments.length === 1) {
+				events = prefix; prefix = '';
+			}
+
+			for (var i = 0, c = events.length; i < c; i++) {
+				this.emit(prefix + events[i]);
+			}
+		},
+
+		// 
+		// {emitsMany} is to {emitMany} as {emits} is to {emit}
+		// 
+		emitsMany: function() {
+			var args = _.toArray(arguments);
+			args.unshift(this);
+			args.unshift(this.emitMany);
+			return _.bind.apply(_, args);
 		}
 
 	});
@@ -18944,7 +16619,7 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 	Class.namespace(app);
 
 	// Bind AppObject onto app
-	app.AppObject = AppObject; delete window.AppObject;
+	app.AppObject = AppObject; window.AppObject = void(0);
 
 	// This is where application config will be defined. These settings
 	// should not be changed in place. To configure your app, create a
@@ -18971,17 +16646,17 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		autoAssignId: true,
 
 		// Should the traditional config value be set on $.ajax calls?
-		ajaxQueryParamsTraditional: true
+		ajaxQueryParamsTraditional: true,
+
+		// Should the ID of a newly created object be found from the Location header?
+		getIdFromCreate: false,
+
+		// Should repsonse data be loaded into the model after a save call?
+		loadSaveResponses: true
 	};
 
 	// Expose a logging utility
-	if (window.console && console.log) {
-		app.log = function(value) {
-			console.log('[' + time() + ']', value);
-		};	
-	} else {
-		app.log = function() { };
-	}
+	app.log = log;
 
 	// Expose easy access to window/document jQuery objects
 	app.$win = $(window);
@@ -19001,17 +16676,50 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		// overriding method.
 		//
 		construct: function() {
-			// All model instances have their own XHR queue. This may not seem
+			var self = this;
+
+			self.construct.parentApply(self, arguments);
+
+			// All model instances have their own XHR queue. self may not seem
 			// very efficient in some ways, but there is actually very little
 			// memory waste and it makes sure that everything is quick and
 			// correct.
-			this._xhr = new app.XhrQueue();
+			self._xhr = new app.XhrQueue();
 
-			// We use this for every xhr, so bind it now to save processing
-			_.bindAll(this, '_parseUrlPlaceholders');
+			// We use self for every xhr, so bind it now to save processing
+			_.bindAll(self, '_parseUrlPlaceholders');
+			
+			// Store the new attributes object
+			self.attributes = self._buildDefaultAttributes({ buildCollections: true });
 
+			// Build the URL parsing regex
+			var url = self.url.replace('{@.id}', '([a-zA-Z0-9]+)');
+			url = url.replace(urlPlaceholderRegex, '[a-zA-Z0-9]+');
+			self._urlRegex = new RegExp('^' + app.config.apiUrl + url, 'i');
+
+			// Initialize accessor stores
+			var getters = self._getters = _.extend({ }, self.getters || { });
+			var setters = self._setters = _.extend({ }, self.setters || { });
+
+			// Partially apply the accessors so that they are bound to the correct
+			// scope and attribute name
+			forIn(getters, function(value, index) {
+				getters[index] = _.bind(value, self, index);
+			});
+			forIn(setters, function(value, index) {
+				setters[index] = _.bind(value, self, index);
+			});
+
+			// Call the initializer if one exists
+			if (typeof self.initialize === 'function') {
+				self.initialize.apply(self, arguments);
+			}
+		},
+
+		_buildDefaultAttributes: function(opts) {
+			var self = this;
 			var attributes = { };
-			var scope = this.constructor;
+			var scope = self.constructor;
 			var scopeAttributes;
 
 			// Work our way up the inheritence chain, building an initial attributes
@@ -19021,51 +16729,164 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 				scopeAttributes = scope.prototype.attributes;
 				if (scopeAttributes) {
 					if (typeof scopeAttributes === 'function') {
-						scopeAttributes = scopeAttributes.call(this);
+						scopeAttributes = scopeAttributes.call(self);
 					} else {
-						scopeAttributes = _.clone(scopeAttributes);
+						scopeAttributes = deepClone(scopeAttributes);
 					}
 					attributes = _.extend(scopeAttributes, attributes);
 				}
 			} while (scope = scope.parent);
-			
-			this.attributes = attributes;
 
-			// Build the URL parsing regex
-			var url = this.url.replace('{@.id}', '([a-zA-Z0-9]+)');
-			this._urlRegex = new RegExp('^' + app.config.apiUrl + url, 'i');
-
-			this.construct.parentApply(this, arguments);
-		},
-
-	// -------------------------------------------------------------
-
-		get: function(attr) {
-			return this.attributes[attr];
-		},
-
-		set: function(attr, value) {
-			var old = this.attributes[attr];
-			if (old !== value) {
-				this.attributes[attr] = value;
-				this.emit('change.' + attr, value, old);
+			// Look for Collections and create instances
+			if (opts && opts.buildCollections) {
+				forIn(attributes, function(value, key) {
+					if (typeof value === 'function' && value.toString() === '[object Class]') {
+						attributes[key] = new value({ parent: self });
+						attributes[key].on('change', self.reemit('.' + key));
+					}
+				});
 			}
+
+			return attributes;
 		},
 
 	// -------------------------------------------------------------
 
-		//
-		// Returns a simple object containing all of the attribtues
-		//
-		toObject: function() {
-			return _.clone(this.attributes, true);
+		_getters: null,
+		_setters: null,
+
+		// 
+		// Allows getting/setting/modifying attributes with depth, eg.
+		// 
+		//    this.set('foo.bar', 1);
+		//    this.mod('foo.bar', function(fooBar) {
+		//      return ++fooBar;
+		//    });
+		// 
+		_findAttribute: function(attr) {
+			var current = this.attributes;
+			var levels = attr.split('.');
+			var last = levels.length - 1;
+			
+			for (var next, i = 0; i < last; i++) {
+				next = levels[i];
+				current = current[next];
+			}
+
+			var lastLevel = levels[last];
+			var currentValue = current[lastLevel];
+
+			var setter = this._setters[attr] || null;
+			var getter = this._getters[attr] || null;
+			
+			if (getter) {
+				currentValue = getter(currentValue);
+			}
+
+			return {
+				obj: current,
+				attr: lastLevel,
+				attrLevels: levels,
+				value: currentValue,
+				set: function(value) {
+					current[lastLevel] = setter ? setter(value, currentValue) : value;
+				}
+			};
 		},
 
-		//
-		// Converts the object into a JSON string
-		//
-		toJson: function() {
-			return JSON.stringify(this.toObject());
+		// 
+		// Get the value of an attribute
+		// 
+		get: function(attr) {
+			return this._findAttribute(attr).value;
+		},
+
+		// 
+		// Set the value of an attribute and emit change event if the value
+		// actually changed.
+		// 
+		set: function(attr, value) {
+			attr = this._findAttribute(attr);
+
+			var isObject =!! (attr.value && typeof attr.value === 'object');
+			var oldValue = isObject ? JSON.stringify(attr.value) : attr.value;
+			var newValue = isObject ? JSON.stringify(value) : value;
+
+			if (oldValue !== newValue) {
+				attr.set(value);
+				this.emit('change.' + attr.attrLevels[0], value);
+
+				return true;
+			}
+
+			return false;
+		},
+
+		// 
+		// Modify an attribute with a given function. Basically the same thing
+		// as {set} above, except instead of taking a new value, it takes a callback
+		// that builds the new value.
+		// 
+		mod: function(attr, func) {
+			attr = this._findAttribute(attr);
+
+			// This right here is the only difference between {mod} and {set}...
+			var value = func(attr.value);
+
+			var isObject =!! (attr.value && typeof attr.value === 'object');
+			var oldValue = isObject ? JSON.stringify(attr.value) : attr.value;
+			var newValue = isObject ? JSON.stringify(value) : value;
+
+			if (oldValue !== newValue) {
+				attr.set(value);
+				this.emit('change.' + attr.attrLevels[0], value);
+
+				return true;
+			}
+
+			return false;
+		},
+
+		// 
+		// Allows the defining of attribute getters, eg.
+		// 
+		//   this.set("foo", "bar");
+		// 
+		//   this.defineGetter("foo", function(attr, value) {
+		//     console.log(attr);  // "foo"
+		//     console.log(value);  // "bar"
+		//     return "baz";
+		//   });
+		// 
+		//   this.get("foo");  // "baz"
+		// 
+		// There can only be one getter per attribute per instance. Attempting to define
+		// more than one will override the original.
+		// 
+		defineGetter: function(attr, func) {
+			this._getters[attr] = _.bind(func, this, attr);
+		},
+		
+		// 
+		// Allows the defining of attribute setters, eg.
+		// 
+		//   this.set("foo", "baz");
+		// 
+		//   this.defineSetter("foo", function(attr, value, oldValue) {
+		//     console.log(attr);  // "foo"
+		//     console.log(value);  // "bar"
+		//     console.log(oldValue);  // "baz"
+		//     return "foo";
+		//   });
+		// 
+		//   this.set("foo", "bar");
+		//   this.get("foo");  // "foo"
+		// 
+		// There can only be one setter per attribute per instance. Attempting to define
+		// more than one will override the original.
+		// 
+		defineSetter: function(attr, func) {
+			this._setters[attr] = _.bind(func, this, attr);
 		},
 
 	// -------------------------------------------------------------
@@ -19074,15 +16895,35 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		// Used to convert the model to JSON for POST/PUT/PATCH XHR calls
 		//
 		toXhr: function() {
-			return this.toObject();
+			var result = { };
+
+			forIn(this.attributes, function(value, key) {
+				if (value instanceof app.Collection || value instanceof app.Model) {
+					value = value.toXhr();
+				}
+
+				result[key] = value;
+			});
+
+			return result;
 		},
 
 		//
 		// Used to convert XHR GET JSON back into model format
 		//
 		fromXhr: function(data) {
-			_.extend(this.attributes, data);
+			var attrs = this.attributes;
+
+			forIn(data, function(value, attr) {
+				if (attrs[attr] instanceof app.Collection) {
+					attrs[attr].fromXhr(value);
+					return;
+				}
+
+				attrs[attr] = value;
+			});
 		},
+
 		//
 		// Queue an XHR on the model's XhrQueue object
 		//
@@ -19097,6 +16938,7 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		_parseUrlPlaceholders: function(match, $1) {
 			var levels = $1.split('.');
 			var value;
+
 			if (levels[0] === 'this') {
 				levels.shift();
 				value = this;
@@ -19106,14 +16948,23 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 			} else {
 				value = window;
 			}
+			
 			for (var i = 0, c = levels.length; i < c; i++) {
+				if (levels[i] === '@') {
+					levels[i] = 'attributes';
+				} else if (levels[i].charAt(0) === '@') {
+					value = value.attributes;
+					levels[i] = levels[i].slice(1);
+				}
 				value = value[levels[i]] || '';
 			}
+			
 			// If the placeholder value was found and is a function,
 			// call the function and return its result.
 			if (typeof value === 'function') {
 				value = value.call(this);
 			}
+			
 			return value;
 		},
 
@@ -19127,9 +16978,13 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 			if (arguments.length && ! _.isArray(properties)) {
 				properties = _.toArray(arguments);
 			}
+
+			this.emit('load', properties);
+
 			return this.xhr('GET', this.url, null, {properties: properties})
 				.on('error', _.bind(this.onLoadError, this))
-				.on('success', _.bind(this.onLoadSuccess, this));
+				.on('success', _.bind(this.onLoadSuccess, this))
+				.on('ready', this.emits('loaded', properties));
 		},
 
 		//
@@ -19206,9 +17061,13 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		//
 		save: function() {
 			var method = (this.attributes[app.config.idKey] ? 'PUT' : 'POST');
+
+			this.emit('save', method);
+
 			return this.xhr(method, this.url, this.toXhr())
 				.on('error', _.bind(this.onSaveError, this))
-				.on('success', _.bind(this.onSaveSuccess, this));
+				.on('success', _.bind(this.onSaveSuccess, this))
+				.on('ready', this.emits('saved', method));
 		},
 
 		//
@@ -19223,9 +17082,13 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		patch: function(arg1) {
 			var keys = _.isArray(arg1) ? arg1 : _.toArray(arguments);
 			var data = _.pick.apply(_, [this.toXhr()].concat(keys));
+
+			this.emitMany('patch.', keys);
+
 			return this.xhr('PATCH', this.url, data)
 				.on('error', _.bind(this.onSaveError, this))
-				.on('success', _.bind(this.onSaveSuccess, this));
+				.on('success', _.bind(this.onSaveSuccess, this))
+				.on('ready', this.emitsMany('patched.', keys));
 		},
 
 		//
@@ -19235,6 +17098,30 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 			throw new app.XhrError(req);
 		},
 
+		// 
+		// Parse the ID from the response of a create request
+		// 
+		_getIdFromCreateResponse: function(req) {
+			// Fetch the Location header for the new object
+			var url = req.xhr.getResponseHeader('Location');
+
+			// If there is no Location header, throw an error
+			if (url === null) {
+				throw new Error('No Location header sent from server; This is most likely ' +
+					'a CORS error (http://bugs.jquery.com/ticket/11455#comment:1)');
+			}
+
+			// Parse the header to get the object ID
+			var match = this._urlRegex.exec(url);
+
+			// If there is no match, throw an error
+			if (! match) {
+				throw new Error('The server returned an invalid Location header');
+			}
+
+			return match[1];
+		},
+
 		//
 		// Runs when a POST/PUT/PATCH request comes back successfully
 		//
@@ -19242,26 +17129,13 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 			// If we just did a POST and recieved a 201 CREATED response,
 			// fetch the Location header and parse it for our new id and
 			// resource URI. 
-			if (req.xhr.status === 201) {
-				// Fetch the Location header for the new object
-				var url = req.xhr.getResponseHeader('Location');
+			if (req.xhr.status === 201 && app.config.getIdFromCreate) {
+				this.attributes[app.config.idKey] = this._getIdFromCreateResponse(req);
+			}
 
-				// If there is no Location header, throw an error
-				if (url === null) {
-					throw new Error('No Location header sent from server; This is most likely ' +
-						'a CORS error (http://bugs.jquery.com/ticket/11455#comment:1)');
-				}
-
-				// Parse the header to get the object ID
-				var match = this._urlRegex.exec(url);
-
-				// If there is no match, throw an error
-				if (! match) {
-					throw new Error('The server returned an invalid Location header');
-				}
-
-				// Store the object ID  on the model
-				this.attributes[app.config.idKey] = match[1];
+			// Check for a loadResponse meta flag
+			if (app.config.loadSaveResponses || req._meta.loadResponse) {
+				return this.onLoadSuccess(req);
 			}
 
 			req.emit('ready', req);
@@ -19276,8 +17150,11 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 			// Don't allow deleting without an ID to avoid accidental deletion
 			// of entire list routes
 			if (this.attributes[app.config.idKey]) {
+				this.emit('delete');
+
 				return this.xhr('DELETE', this.url)
 					.on('error', _.bind(this.onDelError, this))
+					.on('success', this.emits('deleted'))
 					.on('success', _.bind(this.onDelSuccess, this));
 			}
 			throw new Error('Cannot make a DELETE request on a model with no ID');
@@ -19323,7 +17200,301 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 	
 	Class('Collection').Extends('AppObject', {
 
-		// ...
+		//
+		// Base collection constructor. All inheriting classes that override this
+		// method MUST call this with this.construct.parent(this) in the
+		// overriding method.
+		//
+		construct: function(opts) {
+			this.construct.parentApply(this, arguments);
+
+			this._xhr = new app.XhrQueue();
+
+			// We use this for every xhr, so bind it now to save processing
+			_.bindAll(this, '_parseUrlPlaceholders');
+
+			// We store objects in the collection in this array
+			this.objects = [ ];
+
+			// If a parent object is given, store it
+			if (opts && opts.parent) {
+				this.parent = opts.parent;
+			}
+
+			// Build a working copy of the model's default attribute structure.
+			this.attributes = this.Model.prototype._buildDefaultAttributes();
+
+			// Call the initializer if one exists
+			if (typeof this.initialize === 'function') {
+				this.initialize.apply(this, arguments);
+			}
+		},
+
+	// -------------------------------------------------------------
+
+		_create: function(object) {
+			var obj = this.Model.create({ });
+			obj.fromXhr(object);
+			return obj;
+		},
+
+	// -------------------------------------------------------------
+
+		// 
+		// Adds an object to the collection
+		// 
+		add: function(object) {
+			var isModel = (object instanceof this.Model);
+			var id = isModel ? object.get(app.config.idKey) : object[app.config.idKey];
+			if (id) {
+				var existing = this.findById(id);
+				if (existing) {
+					return existing;
+				}
+			}
+			if (! isModel) {
+				object = this._create(object);
+			}
+			this.push(object);
+		},
+
+		// 
+		// Remove objects from the collection
+		// 
+		remove: function(objects) {
+			if (! _.isArray(objects)) {
+				objects = [objects];
+			}
+
+			objects = _.map(objects, function(obj) {
+				if (typeof obj === 'object') {
+					if (obj.attributes) {
+						return obj.attributes[app.config.idKey];
+					} else {
+						return obj[app.config.idKey];
+					}
+				}
+				return obj;
+			});
+
+			this.objects = this.filter(function(obj) {
+				return _.indexOf(objects, obj.attributes[app.config.idKey]) < 0;
+			});
+		},
+
+	// -------------------------------------------------------------
+
+		// 
+		// Find an object in the collection by ID
+		// 
+		findById: function(id) {
+			return this.find(function(obj) {
+				return obj.attributes[app.config.idKey] === id;
+			});
+		},
+
+	// -------------------------------------------------------------
+
+		// 
+		// Builds an array of objects simplified with obj.toXhr
+		// 
+		toXhr: function(arg1) {
+			var keys = _.isArray(arg1) ? arg1 : _.toArray(arguments);
+
+			return this.map(function(obj) {
+				obj = obj.toXhr();
+
+				if (keys.length) {
+					obj = _.pick.apply(_, [obj].concat(keys));
+				}
+				
+				return obj;
+			});
+		},
+
+		// 
+		// Parse an array of objects into model instances
+		// 
+		fromXhr: function(objects) {
+			this.objects.splice(0, this.objects.length);
+			for (var i = 0, c = objects.length; i < c; i++) {
+				this.add(objects[i]);
+			}
+		},
+
+	// -------------------------------------------------------------
+
+		// 
+		// Get's the URL to use in XHRs
+		// 
+		url: function() {
+			if (! this._url) {
+				this._url = this.Model.prototype.url.replace(urlPlaceholderRegex, this._parseUrlPlaceholders);
+			}
+
+			return this._url;
+		},
+
+		//
+		// Parses {value} placeholders in URLs
+		//
+		_parseUrlPlaceholders: function(match, $1) {
+			var levels = $1.split('.');
+			var value;
+
+			if (levels[0] === 'this') {
+				levels.shift();
+				value = this;
+			} else if (levels[0] === '@') {
+				levels.shift();
+				value = this.attributes;
+			} else {
+				value = window;
+			}
+			
+			for (var i = 0, c = levels.length; i < c; i++) {
+				if (levels[i] === '@') {
+					levels[i] = 'attributes';
+				} else if (levels[i].charAt(0) === '@') {
+					value = value.attributes;
+					levels[i] = levels[i].slice(1);
+				}
+				value = value[levels[i]] || '';
+			}
+			
+			// If the placeholder value was found and is a function,
+			// call the function and return its result.
+			if (typeof value === 'function') {
+				value = value.call(this);
+			}
+			
+			return value;
+		},
+
+	// -------------------------------------------------------------
+
+		// 
+		// Makes an XHR
+		// 
+		xhr: function(method, body) {
+			return this._xhr.request(method, this.url(), body);
+		},
+
+		// 
+		// Save all objects in the collection completely
+		// 
+		save: function() {
+			var body = {objects: [ ]};
+			var idKey = app.config.idKey;
+
+			this.forEach(function(object) {
+				body.objects.push(object.toXhr());
+			});
+
+			return this.xhr('PATCH', body);
+		},
+
+		// 
+		// Update a set of properties for each object in the collection
+		// 
+		patch: function(args) {
+			args = _.isArray(args) ? args : _.toArray(arguments);
+
+			var body = {objects: [ ]};
+			var idKey = app.config.idKey;
+
+			this.forEach(function(object) {
+				var obj = { };
+
+				object = object.toXhr();
+				obj[idKey] = object[idKey];
+				
+				for (var i = 0, c = args.length; i < c; i++) {
+					obj[args[i]] = object[args[i]];
+				}
+
+				body.objects.push(obj);
+			});
+
+			return this.xhr('PATCH', body);
+		},
+
+	// -------------------------------------------------------------
+	//  Accessor methods
+
+		at: function(index) {
+			return this.objects[index];
+		},
+
+		len: function() {
+			return this.objects.length;
+		},
+
+		find: function(callback) {
+			return _.find(this.objects, callback);
+		},
+
+		filter: function(callback) {
+			return _.filter(this.objects, callback);
+		},
+
+		map: function(callback) {
+			return _.map(this.objects, callback);
+		},
+
+		forEach: function(callback, scope) {
+			var arr = this.objects;
+			for (var i = 0, c = arr.length; i < c; i++) {
+				callback.call(scope, arr[i], i, arr);
+			}
+		},
+
+		slice: function() {
+			return this.objects.slice.apply(this.objects, arguments);
+		},
+
+		indexOf: function() {
+			return _.indexOf.apply(_, [this.objects].concat(_.toArray(arguments)));
+		},
+
+	// -------------------------------------------------------------
+	//  Modifier methods
+
+		push: function() {
+			var result = this.objects.push.apply(this.objects, arguments);
+			this.emit('change');
+			return result;
+		},
+
+		pop: function() {
+			var result = this.objects.pop();
+			this.emit('change');
+			return result;
+		},
+
+		unshift: function() {
+			var result = this.objects.unshift.apply(this.objects, arguments);
+			this.emit('change');
+			return result;
+		},
+
+		shift: function() {
+			var result = this.objects.shift();
+			this.emit('change');
+			return result;
+		},
+
+		sort: function(callback) {
+			var result = this.objects.sort(callback);
+			this.emit('change');
+			return result;
+		},
+
+		splice: function() {
+			var result = this.objects.splice.apply(this.objects, arguments);
+			this.emit('change');
+			return result;
+		}
 
 	});
 
@@ -19342,6 +17513,11 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		//
 		construct: function() {
 			this.construct.parentApply(this, arguments);
+
+			// Call the initializer if one exists
+			if (typeof this.initialize === 'function') {
+				this.initialize.apply(this, arguments);
+			}
 		},
 
 		//
@@ -19405,7 +17581,7 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 				delete events._extends;
 				delete events._delegate;
 
-				_.forOwn(events, _.bind(this._bindEvent, this, delegate));
+				_.forEach(events, _.bind(this._bindEvent, this, delegate));
 			}
 		},
 
@@ -19428,12 +17604,18 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		// Binds a single event from the events object.
 		//
 		_bindEvent: function(delegate, func, query) {
-			var event;
+			var event, args;
 
 			query = query.split(' ');
 			event = query.shift();
 			query = query.join(' ');
-			func = _.bind(this[func], this);
+
+			args = func.split(' ');
+			args.splice(0, 1, this[args[0]], this);
+			if (typeof args[0] !== 'function') {
+				throw new Error('Cannot bind a undefined function to a DOM event.');
+			}
+			func = _.bind.apply(_, args);
 
 			// Parse event data out of the event name
 			var data = this._eventDataRegex.exec(event);
@@ -19565,6 +17747,7 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 
 		construct: function() {
 			this.construct.parent(this);
+
 			_.bindAll(this);
 
 			this.queue = [ ];
@@ -19627,11 +17810,13 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		//
 		construct: function(method, url, body, options) {
 			this.construct.parent(this);
+
 			_.bindAll(this);
 
 			this.method  = method;
 			this.url     = url;
 			this.body    = body;
+			this._meta   = { };
 
 			// This is the object that we will pass to jQuery.ajax
 			this.config = {
@@ -19676,6 +17861,15 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 				}
 				_.extend(this.config, options);
 			}
+		},
+
+		// 
+		// Sets meta data on the this._meta store
+		// 
+		meta: function(data) {
+			_.extend(this._meta, data);
+
+			return this;
 		},
 
 		//
@@ -19743,6 +17937,22 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 	function time() {
 		var now = new Date();
 		return now.toLocaleTimeString() + '.' + ('000' + now.getMilliseconds()).slice(-4);
+	}
+
+	// 
+	// Log to the console
+	// 
+	function log(value) {
+		if (console && console.log) {
+			console.log('[' + time() + ']', value);
+		}
+	}
+
+	// 
+	// Get the [[class]] of a variable
+	// 
+	function varType(value) {
+		return Object.prototype.toString.call(value).slice(8, -1);
 	}
 
 }());

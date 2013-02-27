@@ -12,7 +12,77 @@
 	//
 	// This is the regex used for parsing placeholders in model URLs
 	//
-	var urlPlaceholderRegex = /\{([^}]+)\}/;
+	var urlPlaceholderRegex = /\{([^}]+)\}/g;
+
+	// 
+	// Avoid errors in older browsers and IE
+	// 
+	if (! window.console) {window.console = { };}
+	if (! window.console.log) {window.console.log = function () { };}
+
+// -------------------------------------------------------------
+//  Clean up inconsistencies between lodash and underscore
+	
+	var isLodash = (typeof _.forIn === 'function');
+	var deepClone, forIn;
+
+	// If we are using lodash..
+	if (isLodash) {
+		deepClone = function(obj) {
+			return _.clone(obj, true);
+		};
+
+		forIn = function(obj, func) {
+			return _.forIn(obj, func);
+		};
+	}
+
+	// If we are using underscore..
+	else {
+		deepClone = function(obj) {
+			if (obj === null) {return obj;}
+
+			var type = typeof obj;
+			if (type === 'object') {
+				type = varType(obj).toLowerCase();
+			}
+
+			var result;
+
+			switch (type) {
+				case 'string':
+				case 'number':
+				case 'boolean':
+				case 'undefined':
+				case 'function':
+					return obj;
+
+				case 'array':
+					return obj.slice();
+
+				case 'date':
+					result = new Date(obj.getTime());
+				break;
+
+				// If I end up needing more specificity, I can write it in later
+				default:
+					result = { };
+				break;
+			}
+
+			for (var i in obj) {
+				if (obj.hasOwnProperty(i)) {
+					result[i] = deepClone(obj[i]);
+				}
+			}
+
+			return result;
+		};
+
+		forIn = function(obj, func) {
+			return _.forEach(obj, func);
+		};
+	}
 
 // -------------------------------------------------------------
 //  AppObject Class
@@ -27,15 +97,16 @@
 		// overriding method.
 		//
 		construct: function() {
-			console.log('[' + time() + '] Intializing', this.__class__, 'instance');
+			this._uuid = nextId++;
+			log('Initializing <' + this.__class__ + '#' + this._uuid + '> instance');
+
 			EventEmitter2.call(this, {
 				wildcard: true,
 				delimiter: '.'
 			});
-			this._uuid = nextId++;
-			if (typeof this.initialize === 'function') {
-				this.initialize.apply(this, arguments);
-			}
+
+			// DEBUG This is here so that build errors actually log something useful
+			this.on('error.build', function(err) { throw err; });
 		},
 
 		//
@@ -44,7 +115,7 @@
 		//
 		emit: function(event) {
 			var ctorName = (this === app) ? 'app' : this.__class__;
-			console.log('[' + time() + '] ' + ctorName + ':' + event);
+			log(ctorName + ':' + event);
 			EventEmitter2.prototype.emit.apply(this, arguments);
 		},
 
@@ -89,11 +160,14 @@
 				//
 				// eg.
 				//   a.on('foo', b.reemit('.bar')) => 'foo.bar'
+				//   a.on('foo', b.reemit('bar.')) => 'bar.foo'
 				//   a.on('foo', b.reemit('bar')) => 'bar'
 				//
 				if (eventModifier) {
 					if (eventModifier[0] === '.') {
 						event += eventModifier;
+					} else if (eventModifier[eventModifier.length - 1] === '.') {
+						event = eventModifier + event;
 					} else {
 						event = eventModifier;
 					}
@@ -102,6 +176,37 @@
 				args.unshift(event);
 				self.emit.apply(self, args);
 			};
+		},
+
+		// 
+		// Emits multiple events at the same time, optionally with a set prefix
+		// 
+		// eg.
+		//   foo.emitMany('bar.', ['a', 'b', 'c']);
+		// 
+		// is the same as
+		//   foo.emit('bar.a');
+		//   foo.emit('bar.b');
+		//   foo.emit('bar.c');
+		// 
+		emitMany: function(prefix, events) {
+			if (arguments.length === 1) {
+				events = prefix; prefix = '';
+			}
+
+			for (var i = 0, c = events.length; i < c; i++) {
+				this.emit(prefix + events[i]);
+			}
+		},
+
+		// 
+		// {emitsMany} is to {emitMany} as {emits} is to {emit}
+		// 
+		emitsMany: function() {
+			var args = _.toArray(arguments);
+			args.unshift(this);
+			args.unshift(this.emitMany);
+			return _.bind.apply(_, args);
 		}
 
 	});
@@ -116,7 +221,7 @@
 	Class.namespace(app);
 
 	// Bind AppObject onto app
-	app.AppObject = AppObject; delete window.AppObject;
+	app.AppObject = AppObject; window.AppObject = void(0);
 
 	// This is where application config will be defined. These settings
 	// should not be changed in place. To configure your app, create a
@@ -143,17 +248,17 @@
 		autoAssignId: true,
 
 		// Should the traditional config value be set on $.ajax calls?
-		ajaxQueryParamsTraditional: true
+		ajaxQueryParamsTraditional: true,
+
+		// Should the ID of a newly created object be found from the Location header?
+		getIdFromCreate: false,
+
+		// Should repsonse data be loaded into the model after a save call?
+		loadSaveResponses: true
 	};
 
 	// Expose a logging utility
-	if (window.console && console.log) {
-		app.log = function(value) {
-			console.log('[' + time() + ']', value);
-		};	
-	} else {
-		app.log = function() { };
-	}
+	app.log = log;
 
 	// Expose easy access to window/document jQuery objects
 	app.$win = $(window);
@@ -173,17 +278,50 @@
 		// overriding method.
 		//
 		construct: function() {
-			// All model instances have their own XHR queue. This may not seem
+			var self = this;
+
+			self.construct.parentApply(self, arguments);
+
+			// All model instances have their own XHR queue. self may not seem
 			// very efficient in some ways, but there is actually very little
 			// memory waste and it makes sure that everything is quick and
 			// correct.
-			this._xhr = new app.XhrQueue();
+			self._xhr = new app.XhrQueue();
 
-			// We use this for every xhr, so bind it now to save processing
-			_.bindAll(this, '_parseUrlPlaceholders');
+			// We use self for every xhr, so bind it now to save processing
+			_.bindAll(self, '_parseUrlPlaceholders');
+			
+			// Store the new attributes object
+			self.attributes = self._buildDefaultAttributes({ buildCollections: true });
 
+			// Build the URL parsing regex
+			var url = self.url.replace('{@.id}', '([a-zA-Z0-9]+)');
+			url = url.replace(urlPlaceholderRegex, '[a-zA-Z0-9]+');
+			self._urlRegex = new RegExp('^' + app.config.apiUrl + url, 'i');
+
+			// Initialize accessor stores
+			var getters = self._getters = _.extend({ }, self.getters || { });
+			var setters = self._setters = _.extend({ }, self.setters || { });
+
+			// Partially apply the accessors so that they are bound to the correct
+			// scope and attribute name
+			forIn(getters, function(value, index) {
+				getters[index] = _.bind(value, self, index);
+			});
+			forIn(setters, function(value, index) {
+				setters[index] = _.bind(value, self, index);
+			});
+
+			// Call the initializer if one exists
+			if (typeof self.initialize === 'function') {
+				self.initialize.apply(self, arguments);
+			}
+		},
+
+		_buildDefaultAttributes: function(opts) {
+			var self = this;
 			var attributes = { };
-			var scope = this.constructor;
+			var scope = self.constructor;
 			var scopeAttributes;
 
 			// Work our way up the inheritence chain, building an initial attributes
@@ -193,51 +331,164 @@
 				scopeAttributes = scope.prototype.attributes;
 				if (scopeAttributes) {
 					if (typeof scopeAttributes === 'function') {
-						scopeAttributes = scopeAttributes.call(this);
+						scopeAttributes = scopeAttributes.call(self);
 					} else {
-						scopeAttributes = _.clone(scopeAttributes);
+						scopeAttributes = deepClone(scopeAttributes);
 					}
 					attributes = _.extend(scopeAttributes, attributes);
 				}
 			} while (scope = scope.parent);
-			
-			this.attributes = attributes;
 
-			// Build the URL parsing regex
-			var url = this.url.replace('{@.id}', '([a-zA-Z0-9]+)');
-			this._urlRegex = new RegExp('^' + app.config.apiUrl + url, 'i');
-
-			this.construct.parentApply(this, arguments);
-		},
-
-	// -------------------------------------------------------------
-
-		get: function(attr) {
-			return this.attributes[attr];
-		},
-
-		set: function(attr, value) {
-			var old = this.attributes[attr];
-			if (old !== value) {
-				this.attributes[attr] = value;
-				this.emit('change.' + attr, value, old);
+			// Look for Collections and create instances
+			if (opts && opts.buildCollections) {
+				forIn(attributes, function(value, key) {
+					if (typeof value === 'function' && value.toString() === '[object Class]') {
+						attributes[key] = new value({ parent: self });
+						attributes[key].on('change', self.reemit('.' + key));
+					}
+				});
 			}
+
+			return attributes;
 		},
 
 	// -------------------------------------------------------------
 
-		//
-		// Returns a simple object containing all of the attribtues
-		//
-		toObject: function() {
-			return _.clone(this.attributes, true);
+		_getters: null,
+		_setters: null,
+
+		// 
+		// Allows getting/setting/modifying attributes with depth, eg.
+		// 
+		//    this.set('foo.bar', 1);
+		//    this.mod('foo.bar', function(fooBar) {
+		//      return ++fooBar;
+		//    });
+		// 
+		_findAttribute: function(attr) {
+			var current = this.attributes;
+			var levels = attr.split('.');
+			var last = levels.length - 1;
+			
+			for (var next, i = 0; i < last; i++) {
+				next = levels[i];
+				current = current[next];
+			}
+
+			var lastLevel = levels[last];
+			var currentValue = current[lastLevel];
+
+			var setter = this._setters[attr] || null;
+			var getter = this._getters[attr] || null;
+			
+			if (getter) {
+				currentValue = getter(currentValue);
+			}
+
+			return {
+				obj: current,
+				attr: lastLevel,
+				attrLevels: levels,
+				value: currentValue,
+				set: function(value) {
+					current[lastLevel] = setter ? setter(value, currentValue) : value;
+				}
+			};
 		},
 
-		//
-		// Converts the object into a JSON string
-		//
-		toJson: function() {
-			return JSON.stringify(this.toObject());
+		// 
+		// Get the value of an attribute
+		// 
+		get: function(attr) {
+			return this._findAttribute(attr).value;
+		},
+
+		// 
+		// Set the value of an attribute and emit change event if the value
+		// actually changed.
+		// 
+		set: function(attr, value) {
+			attr = this._findAttribute(attr);
+
+			var isObject =!! (attr.value && typeof attr.value === 'object');
+			var oldValue = isObject ? JSON.stringify(attr.value) : attr.value;
+			var newValue = isObject ? JSON.stringify(value) : value;
+
+			if (oldValue !== newValue) {
+				attr.set(value);
+				this.emit('change.' + attr.attrLevels[0], value);
+
+				return true;
+			}
+
+			return false;
+		},
+
+		// 
+		// Modify an attribute with a given function. Basically the same thing
+		// as {set} above, except instead of taking a new value, it takes a callback
+		// that builds the new value.
+		// 
+		mod: function(attr, func) {
+			attr = this._findAttribute(attr);
+
+			// This right here is the only difference between {mod} and {set}...
+			var value = func(attr.value);
+
+			var isObject =!! (attr.value && typeof attr.value === 'object');
+			var oldValue = isObject ? JSON.stringify(attr.value) : attr.value;
+			var newValue = isObject ? JSON.stringify(value) : value;
+
+			if (oldValue !== newValue) {
+				attr.set(value);
+				this.emit('change.' + attr.attrLevels[0], value);
+
+				return true;
+			}
+
+			return false;
+		},
+
+		// 
+		// Allows the defining of attribute getters, eg.
+		// 
+		//   this.set("foo", "bar");
+		// 
+		//   this.defineGetter("foo", function(attr, value) {
+		//     console.log(attr);  // "foo"
+		//     console.log(value);  // "bar"
+		//     return "baz";
+		//   });
+		// 
+		//   this.get("foo");  // "baz"
+		// 
+		// There can only be one getter per attribute per instance. Attempting to define
+		// more than one will override the original.
+		// 
+		defineGetter: function(attr, func) {
+			this._getters[attr] = _.bind(func, this, attr);
+		},
+		
+		// 
+		// Allows the defining of attribute setters, eg.
+		// 
+		//   this.set("foo", "baz");
+		// 
+		//   this.defineSetter("foo", function(attr, value, oldValue) {
+		//     console.log(attr);  // "foo"
+		//     console.log(value);  // "bar"
+		//     console.log(oldValue);  // "baz"
+		//     return "foo";
+		//   });
+		// 
+		//   this.set("foo", "bar");
+		//   this.get("foo");  // "foo"
+		// 
+		// There can only be one setter per attribute per instance. Attempting to define
+		// more than one will override the original.
+		// 
+		defineSetter: function(attr, func) {
+			this._setters[attr] = _.bind(func, this, attr);
 		},
 
 	// -------------------------------------------------------------
@@ -246,15 +497,35 @@
 		// Used to convert the model to JSON for POST/PUT/PATCH XHR calls
 		//
 		toXhr: function() {
-			return this.toObject();
+			var result = { };
+
+			forIn(this.attributes, function(value, key) {
+				if (value instanceof app.Collection || value instanceof app.Model) {
+					value = value.toXhr();
+				}
+
+				result[key] = value;
+			});
+
+			return result;
 		},
 
 		//
 		// Used to convert XHR GET JSON back into model format
 		//
 		fromXhr: function(data) {
-			_.extend(this.attributes, data);
+			var attrs = this.attributes;
+
+			forIn(data, function(value, attr) {
+				if (attrs[attr] instanceof app.Collection) {
+					attrs[attr].fromXhr(value);
+					return;
+				}
+
+				attrs[attr] = value;
+			});
 		},
+
 		//
 		// Queue an XHR on the model's XhrQueue object
 		//
@@ -269,6 +540,7 @@
 		_parseUrlPlaceholders: function(match, $1) {
 			var levels = $1.split('.');
 			var value;
+
 			if (levels[0] === 'this') {
 				levels.shift();
 				value = this;
@@ -278,14 +550,23 @@
 			} else {
 				value = window;
 			}
+			
 			for (var i = 0, c = levels.length; i < c; i++) {
+				if (levels[i] === '@') {
+					levels[i] = 'attributes';
+				} else if (levels[i].charAt(0) === '@') {
+					value = value.attributes;
+					levels[i] = levels[i].slice(1);
+				}
 				value = value[levels[i]] || '';
 			}
+			
 			// If the placeholder value was found and is a function,
 			// call the function and return its result.
 			if (typeof value === 'function') {
 				value = value.call(this);
 			}
+			
 			return value;
 		},
 
@@ -299,9 +580,13 @@
 			if (arguments.length && ! _.isArray(properties)) {
 				properties = _.toArray(arguments);
 			}
+
+			this.emit('load', properties);
+
 			return this.xhr('GET', this.url, null, {properties: properties})
 				.on('error', _.bind(this.onLoadError, this))
-				.on('success', _.bind(this.onLoadSuccess, this));
+				.on('success', _.bind(this.onLoadSuccess, this))
+				.on('ready', this.emits('loaded', properties));
 		},
 
 		//
@@ -378,9 +663,13 @@
 		//
 		save: function() {
 			var method = (this.attributes[app.config.idKey] ? 'PUT' : 'POST');
+
+			this.emit('save', method);
+
 			return this.xhr(method, this.url, this.toXhr())
 				.on('error', _.bind(this.onSaveError, this))
-				.on('success', _.bind(this.onSaveSuccess, this));
+				.on('success', _.bind(this.onSaveSuccess, this))
+				.on('ready', this.emits('saved', method));
 		},
 
 		//
@@ -395,9 +684,13 @@
 		patch: function(arg1) {
 			var keys = _.isArray(arg1) ? arg1 : _.toArray(arguments);
 			var data = _.pick.apply(_, [this.toXhr()].concat(keys));
+
+			this.emitMany('patch.', keys);
+
 			return this.xhr('PATCH', this.url, data)
 				.on('error', _.bind(this.onSaveError, this))
-				.on('success', _.bind(this.onSaveSuccess, this));
+				.on('success', _.bind(this.onSaveSuccess, this))
+				.on('ready', this.emitsMany('patched.', keys));
 		},
 
 		//
@@ -407,6 +700,30 @@
 			throw new app.XhrError(req);
 		},
 
+		// 
+		// Parse the ID from the response of a create request
+		// 
+		_getIdFromCreateResponse: function(req) {
+			// Fetch the Location header for the new object
+			var url = req.xhr.getResponseHeader('Location');
+
+			// If there is no Location header, throw an error
+			if (url === null) {
+				throw new Error('No Location header sent from server; This is most likely ' +
+					'a CORS error (http://bugs.jquery.com/ticket/11455#comment:1)');
+			}
+
+			// Parse the header to get the object ID
+			var match = this._urlRegex.exec(url);
+
+			// If there is no match, throw an error
+			if (! match) {
+				throw new Error('The server returned an invalid Location header');
+			}
+
+			return match[1];
+		},
+
 		//
 		// Runs when a POST/PUT/PATCH request comes back successfully
 		//
@@ -414,26 +731,13 @@
 			// If we just did a POST and recieved a 201 CREATED response,
 			// fetch the Location header and parse it for our new id and
 			// resource URI. 
-			if (req.xhr.status === 201) {
-				// Fetch the Location header for the new object
-				var url = req.xhr.getResponseHeader('Location');
+			if (req.xhr.status === 201 && app.config.getIdFromCreate) {
+				this.attributes[app.config.idKey] = this._getIdFromCreateResponse(req);
+			}
 
-				// If there is no Location header, throw an error
-				if (url === null) {
-					throw new Error('No Location header sent from server; This is most likely ' +
-						'a CORS error (http://bugs.jquery.com/ticket/11455#comment:1)');
-				}
-
-				// Parse the header to get the object ID
-				var match = this._urlRegex.exec(url);
-
-				// If there is no match, throw an error
-				if (! match) {
-					throw new Error('The server returned an invalid Location header');
-				}
-
-				// Store the object ID  on the model
-				this.attributes[app.config.idKey] = match[1];
+			// Check for a loadResponse meta flag
+			if (app.config.loadSaveResponses || req._meta.loadResponse) {
+				return this.onLoadSuccess(req);
 			}
 
 			req.emit('ready', req);
@@ -448,8 +752,11 @@
 			// Don't allow deleting without an ID to avoid accidental deletion
 			// of entire list routes
 			if (this.attributes[app.config.idKey]) {
+				this.emit('delete');
+
 				return this.xhr('DELETE', this.url)
 					.on('error', _.bind(this.onDelError, this))
+					.on('success', this.emits('deleted'))
 					.on('success', _.bind(this.onDelSuccess, this));
 			}
 			throw new Error('Cannot make a DELETE request on a model with no ID');
@@ -495,7 +802,301 @@
 	
 	Class('Collection').Extends('AppObject', {
 
-		// ...
+		//
+		// Base collection constructor. All inheriting classes that override this
+		// method MUST call this with this.construct.parent(this) in the
+		// overriding method.
+		//
+		construct: function(opts) {
+			this.construct.parentApply(this, arguments);
+
+			this._xhr = new app.XhrQueue();
+
+			// We use this for every xhr, so bind it now to save processing
+			_.bindAll(this, '_parseUrlPlaceholders');
+
+			// We store objects in the collection in this array
+			this.objects = [ ];
+
+			// If a parent object is given, store it
+			if (opts && opts.parent) {
+				this.parent = opts.parent;
+			}
+
+			// Build a working copy of the model's default attribute structure.
+			this.attributes = this.Model.prototype._buildDefaultAttributes();
+
+			// Call the initializer if one exists
+			if (typeof this.initialize === 'function') {
+				this.initialize.apply(this, arguments);
+			}
+		},
+
+	// -------------------------------------------------------------
+
+		_create: function(object) {
+			var obj = this.Model.create({ });
+			obj.fromXhr(object);
+			return obj;
+		},
+
+	// -------------------------------------------------------------
+
+		// 
+		// Adds an object to the collection
+		// 
+		add: function(object) {
+			var isModel = (object instanceof this.Model);
+			var id = isModel ? object.get(app.config.idKey) : object[app.config.idKey];
+			if (id) {
+				var existing = this.findById(id);
+				if (existing) {
+					return existing;
+				}
+			}
+			if (! isModel) {
+				object = this._create(object);
+			}
+			this.push(object);
+		},
+
+		// 
+		// Remove objects from the collection
+		// 
+		remove: function(objects) {
+			if (! _.isArray(objects)) {
+				objects = [objects];
+			}
+
+			objects = _.map(objects, function(obj) {
+				if (typeof obj === 'object') {
+					if (obj.attributes) {
+						return obj.attributes[app.config.idKey];
+					} else {
+						return obj[app.config.idKey];
+					}
+				}
+				return obj;
+			});
+
+			this.objects = this.filter(function(obj) {
+				return _.indexOf(objects, obj.attributes[app.config.idKey]) < 0;
+			});
+		},
+
+	// -------------------------------------------------------------
+
+		// 
+		// Find an object in the collection by ID
+		// 
+		findById: function(id) {
+			return this.find(function(obj) {
+				return obj.attributes[app.config.idKey] === id;
+			});
+		},
+
+	// -------------------------------------------------------------
+
+		// 
+		// Builds an array of objects simplified with obj.toXhr
+		// 
+		toXhr: function(arg1) {
+			var keys = _.isArray(arg1) ? arg1 : _.toArray(arguments);
+
+			return this.map(function(obj) {
+				obj = obj.toXhr();
+
+				if (keys.length) {
+					obj = _.pick.apply(_, [obj].concat(keys));
+				}
+				
+				return obj;
+			});
+		},
+
+		// 
+		// Parse an array of objects into model instances
+		// 
+		fromXhr: function(objects) {
+			this.objects.splice(0, this.objects.length);
+			for (var i = 0, c = objects.length; i < c; i++) {
+				this.add(objects[i]);
+			}
+		},
+
+	// -------------------------------------------------------------
+
+		// 
+		// Get's the URL to use in XHRs
+		// 
+		url: function() {
+			if (! this._url) {
+				this._url = this.Model.prototype.url.replace(urlPlaceholderRegex, this._parseUrlPlaceholders);
+			}
+
+			return this._url;
+		},
+
+		//
+		// Parses {value} placeholders in URLs
+		//
+		_parseUrlPlaceholders: function(match, $1) {
+			var levels = $1.split('.');
+			var value;
+
+			if (levels[0] === 'this') {
+				levels.shift();
+				value = this;
+			} else if (levels[0] === '@') {
+				levels.shift();
+				value = this.attributes;
+			} else {
+				value = window;
+			}
+			
+			for (var i = 0, c = levels.length; i < c; i++) {
+				if (levels[i] === '@') {
+					levels[i] = 'attributes';
+				} else if (levels[i].charAt(0) === '@') {
+					value = value.attributes;
+					levels[i] = levels[i].slice(1);
+				}
+				value = value[levels[i]] || '';
+			}
+			
+			// If the placeholder value was found and is a function,
+			// call the function and return its result.
+			if (typeof value === 'function') {
+				value = value.call(this);
+			}
+			
+			return value;
+		},
+
+	// -------------------------------------------------------------
+
+		// 
+		// Makes an XHR
+		// 
+		xhr: function(method, body) {
+			return this._xhr.request(method, this.url(), body);
+		},
+
+		// 
+		// Save all objects in the collection completely
+		// 
+		save: function() {
+			var body = {objects: [ ]};
+			var idKey = app.config.idKey;
+
+			this.forEach(function(object) {
+				body.objects.push(object.toXhr());
+			});
+
+			return this.xhr('PATCH', body);
+		},
+
+		// 
+		// Update a set of properties for each object in the collection
+		// 
+		patch: function(args) {
+			args = _.isArray(args) ? args : _.toArray(arguments);
+
+			var body = {objects: [ ]};
+			var idKey = app.config.idKey;
+
+			this.forEach(function(object) {
+				var obj = { };
+
+				object = object.toXhr();
+				obj[idKey] = object[idKey];
+				
+				for (var i = 0, c = args.length; i < c; i++) {
+					obj[args[i]] = object[args[i]];
+				}
+
+				body.objects.push(obj);
+			});
+
+			return this.xhr('PATCH', body);
+		},
+
+	// -------------------------------------------------------------
+	//  Accessor methods
+
+		at: function(index) {
+			return this.objects[index];
+		},
+
+		len: function() {
+			return this.objects.length;
+		},
+
+		find: function(callback) {
+			return _.find(this.objects, callback);
+		},
+
+		filter: function(callback) {
+			return _.filter(this.objects, callback);
+		},
+
+		map: function(callback) {
+			return _.map(this.objects, callback);
+		},
+
+		forEach: function(callback, scope) {
+			var arr = this.objects;
+			for (var i = 0, c = arr.length; i < c; i++) {
+				callback.call(scope, arr[i], i, arr);
+			}
+		},
+
+		slice: function() {
+			return this.objects.slice.apply(this.objects, arguments);
+		},
+
+		indexOf: function() {
+			return _.indexOf.apply(_, [this.objects].concat(_.toArray(arguments)));
+		},
+
+	// -------------------------------------------------------------
+	//  Modifier methods
+
+		push: function() {
+			var result = this.objects.push.apply(this.objects, arguments);
+			this.emit('change');
+			return result;
+		},
+
+		pop: function() {
+			var result = this.objects.pop();
+			this.emit('change');
+			return result;
+		},
+
+		unshift: function() {
+			var result = this.objects.unshift.apply(this.objects, arguments);
+			this.emit('change');
+			return result;
+		},
+
+		shift: function() {
+			var result = this.objects.shift();
+			this.emit('change');
+			return result;
+		},
+
+		sort: function(callback) {
+			var result = this.objects.sort(callback);
+			this.emit('change');
+			return result;
+		},
+
+		splice: function() {
+			var result = this.objects.splice.apply(this.objects, arguments);
+			this.emit('change');
+			return result;
+		}
 
 	});
 
@@ -514,6 +1115,11 @@
 		//
 		construct: function() {
 			this.construct.parentApply(this, arguments);
+
+			// Call the initializer if one exists
+			if (typeof this.initialize === 'function') {
+				this.initialize.apply(this, arguments);
+			}
 		},
 
 		//
@@ -577,7 +1183,7 @@
 				delete events._extends;
 				delete events._delegate;
 
-				_.forOwn(events, _.bind(this._bindEvent, this, delegate));
+				_.forEach(events, _.bind(this._bindEvent, this, delegate));
 			}
 		},
 
@@ -600,12 +1206,18 @@
 		// Binds a single event from the events object.
 		//
 		_bindEvent: function(delegate, func, query) {
-			var event;
+			var event, args;
 
 			query = query.split(' ');
 			event = query.shift();
 			query = query.join(' ');
-			func = _.bind(this[func], this);
+
+			args = func.split(' ');
+			args.splice(0, 1, this[args[0]], this);
+			if (typeof args[0] !== 'function') {
+				throw new Error('Cannot bind a undefined function to a DOM event.');
+			}
+			func = _.bind.apply(_, args);
 
 			// Parse event data out of the event name
 			var data = this._eventDataRegex.exec(event);
@@ -737,6 +1349,7 @@
 
 		construct: function() {
 			this.construct.parent(this);
+
 			_.bindAll(this);
 
 			this.queue = [ ];
@@ -799,11 +1412,13 @@
 		//
 		construct: function(method, url, body, options) {
 			this.construct.parent(this);
+
 			_.bindAll(this);
 
 			this.method  = method;
 			this.url     = url;
 			this.body    = body;
+			this._meta   = { };
 
 			// This is the object that we will pass to jQuery.ajax
 			this.config = {
@@ -848,6 +1463,15 @@
 				}
 				_.extend(this.config, options);
 			}
+		},
+
+		// 
+		// Sets meta data on the this._meta store
+		// 
+		meta: function(data) {
+			_.extend(this._meta, data);
+
+			return this;
 		},
 
 		//
@@ -915,6 +1539,22 @@
 	function time() {
 		var now = new Date();
 		return now.toLocaleTimeString() + '.' + ('000' + now.getMilliseconds()).slice(-4);
+	}
+
+	// 
+	// Log to the console
+	// 
+	function log(value) {
+		if (console && console.log) {
+			console.log('[' + time() + ']', value);
+		}
+	}
+
+	// 
+	// Get the [[class]] of a variable
+	// 
+	function varType(value) {
+		return Object.prototype.toString.call(value).slice(8, -1);
 	}
 
 }());

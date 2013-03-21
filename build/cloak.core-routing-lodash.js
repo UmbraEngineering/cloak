@@ -2,8 +2,8 @@
  * A simple JavaScript class system
  *
  * @author     James Brumond
- * @version    0.2.1
- * @copyright  Copyright 2012 James Brumond
+ * @version    0.3.0
+ * @copyright  Copyright 2013 James Brumond
  * @license    Dual licensed under MIT and GPL
  */
 
@@ -42,8 +42,6 @@
 			if (! (_args && _args.__shouldExpand__)) {
 				_args = arguments;
 			}
-			// Manages scope for super
-			inst.__scope__ = { };
 			// If a function was given as the constructor, it should
 			// be called every time a new instance is created
 			if (typeof constructor === 'function') {
@@ -103,23 +101,23 @@
 				if (isFunc(self.prototype[k])) {
 					(function(method) {
 						var func = self.prototype[method];
+						func.__scope__ = self;
 
 						func.parent = function(that) {
 							return func.parentApply(that, slice(arguments, 1));
 						};
 
 						func.parentApply = function(that, args) {
-							var __scope__ = that.__scope__;
-							var oldScope = __scope__[method] || self;
-							var scope = __scope__[method] = oldScope.parent;
+							var oldScope = func.__scope__;
+							var scope = func.__scope__ = func.__scope__.parent;
 							try {
 								return scope.prototype[method].apply(that, args);
-							} catch(e) {
-								// pass
+							} catch (e) {
+								throw e;
 							} finally {
 								// We put this in a finally block to make sure the scope is
 								// always reset, even in the event of an error
-								__scope__[method] = oldScope;
+								func.__scope__ = oldScope;
 							}
 						};
 					}(k));

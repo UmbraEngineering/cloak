@@ -254,7 +254,10 @@
 		getIdFromCreate: false,
 
 		// Should repsonse data be loaded into the model after a save call?
-		loadSaveResponses: true
+		loadSaveResponses: true,
+
+		// Should delegate events be used by default?
+		delegateEvents: true
 	};
 
 	// Expose a logging utility
@@ -628,7 +631,7 @@
 		onLoadSuccess: function(req) {
 			// Automatically assign the correct ID to requested objects
 			if (app.config.autoAssignId && req.json && req.json[app.config.idKey]) {
-				this[app.config.idKey] = req.json[app.config.idKey];
+				this.attributes[app.config.idKey] = req.json[app.config.idKey];
 			}
 			// Call the model's xhr data loader
 			try {
@@ -1179,6 +1182,9 @@
 				}
 
 				var delegate = events._delegate;
+				if (typeof delegate !== 'boolean') {
+					delegate = app.config.delegateEvents;
+				}
 
 				delete events._extends;
 				delete events._delegate;
@@ -1538,7 +1544,12 @@
 	//
 	function time() {
 		var now = new Date();
-		return now.toLocaleTimeString() + '.' + ('000' + now.getMilliseconds()).slice(-4);
+		return (
+			('00' + now.getHours()).slice(-2) + ':' +
+			('00' + now.getMinutes()).slice(-2) + ':' +
+			('00' + now.getSeconds()).slice(-2) + '.' +
+			('000' + now.getMilliseconds()).slice(-4)
+		);
 	}
 
 	// 

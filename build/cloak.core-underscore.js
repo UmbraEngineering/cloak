@@ -14958,7 +14958,12 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 	//
 	function time() {
 		var now = new Date();
-		return now.toLocaleTimeString() + '.' + ('000' + now.getMilliseconds()).slice(-4);
+		return (
+			('00' + now.getHours()).slice(-2) + ':' +
+			('00' + now.getMinutes()).slice(-2) + ':' +
+			('00' + now.getSeconds()).slice(-2) + '.' +
+			('000' + now.getMilliseconds()).slice(-4)
+		);
 	}
 
 	// 

@@ -15962,7 +15962,8 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 
 		//
 		// Override EventEmitter2::emit so that it logs all emitted events. This could
-		// (and probably should) be removed from production builds.
+		// (and probably should) be removed from production builds, but I don't really
+		// care that much..
 		//
 		emit: function(event) {
 			var ctorName = (this === app) ? 'app' : this.__class__;
@@ -16105,7 +16106,10 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		getIdFromCreate: false,
 
 		// Should repsonse data be loaded into the model after a save call?
-		loadSaveResponses: true
+		loadSaveResponses: true,
+
+		// Should delegate events be used by default?
+		delegateEvents: true
 	};
 
 	// Expose a logging utility
@@ -16139,7 +16143,7 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 			// correct.
 			self._xhr = new app.XhrQueue();
 
-			// We use self for every xhr, so bind it now to save processing
+			// We use _parseUrlPlaceholders for every xhr, so bind it now to save processing
 			_.bindAll(self, '_parseUrlPlaceholders');
 			
 			// Store the new attributes object
@@ -16267,7 +16271,8 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 
 			if (oldValue !== newValue) {
 				attr.set(value);
-				this.emit('change.' + attr.attrLevels[0], value);
+				var topLevel = attr.attrLevels[0];
+				this.emit('change.' + topLevel, this.attributes[topLevel]);
 
 				return true;
 			}
@@ -16283,16 +16288,22 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		mod: function(attr, func) {
 			attr = this._findAttribute(attr);
 
-			// This right here is the only difference between {mod} and {set}...
-			var value = func(attr.value);
-
 			var isObject =!! (attr.value && typeof attr.value === 'object');
 			var oldValue = isObject ? JSON.stringify(attr.value) : attr.value;
-			var newValue = isObject ? JSON.stringify(value) : value;
+
+			func(attr.value);
+
+			var newValue = isObject ? JSON.stringify(attr.value) : attr.value;
 
 			if (oldValue !== newValue) {
-				attr.set(value);
-				this.emit('change.' + attr.attrLevels[0], value);
+				// NOTE: We don't really need to go through the setter because the
+				// value has already been changed in place, but there may be some
+				// kind of other logic in the setter that is supposed to run, so
+				// I don't really know how to handle that...
+				
+				// attr.set(attr.value);
+				var topLevel = attr.attrLevels[0];
+				this.emit('change.' + topLevel, this.attributes[topLevel]);
 
 				return true;
 			}
@@ -16479,7 +16490,7 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 		onLoadSuccess: function(req) {
 			// Automatically assign the correct ID to requested objects
 			if (app.config.autoAssignId && req.json && req.json[app.config.idKey]) {
-				this[app.config.idKey] = req.json[app.config.idKey];
+				this.attributes[app.config.idKey] = req.json[app.config.idKey];
 			}
 			// Call the model's xhr data loader
 			try {
@@ -17030,6 +17041,9 @@ if ( typeof define === "function" && define.amd && define.amd.jQuery ) {
 				}
 
 				var delegate = events._delegate;
+				if (typeof delegate !== 'boolean') {
+					delegate = app.config.delegateEvents;
+				}
 
 				delete events._extends;
 				delete events._delegate;

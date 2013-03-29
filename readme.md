@@ -6,8 +6,7 @@ A Client-Side JavaScript MVC Framework
 
 ## What is cloak?
 
-Cloak.js is a client-side MVC web application framework. Inspired greatly by <a href="http://backbonejs.org/">Backbone.js</a>,
-Cloak.js has many similar features and should be very easy to learn for anyone familiar with Backbone.js.
+Cloak.js is a client-side MVC web application framework. Inspired greatly by [Backbone.js](http://backbonejs.org/), Cloak.js has many similar features and should be very easy to learn for anyone familiar with Backbone.js.
 
 Cloak.js is still be developed and improved. The following are features that are still to be added before the v1.0 release.
 

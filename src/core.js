@@ -929,10 +929,22 @@
 		// Parse an array of objects into model instances
 		// 
 		fromXhr: function(objects) {
-			this.objects.splice(0, this.objects.length);
-			for (var i = 0, c = objects.length; i < c; i++) {
-				this.add(objects[i]);
-			}
+			var self = this;
+			var idKey = app.config.idKey;
+			var origs = this.objects.splice(0, this.objects.length);
+
+			_.forEach(objects, function(obj) {
+				var orig = _.find(origs, function(orig) {
+					return orig.get(idKey) === obj[idKey];
+				});
+
+				if (orig) {
+					orig.fromXhr(obj);
+					obj = orig;
+				}
+
+				self.add(obj);
+			});
 		},
 
 	// -------------------------------------------------------------

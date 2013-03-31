@@ -3,9 +3,10 @@
  */
 
 /*jshint browser: true, bitwise: false, camelcase: false, eqnull: true, latedef: false,
-  plusplus: false, jquery: true, shadow: true, smarttabs: true, loopfunc: true */
+  plusplus: false, jquery: true, shadow: true, smarttabs: true, loopfunc: true, boss: true,
+  unused: false */
 
-/*global Class: true, EventEmitter2: true, _: true, Handlebars: true */
+/*global Class: true, EventEmitter2: true, _: true, Handlebars: true, console: true */
 
 (function() {
 
@@ -216,13 +217,13 @@
 //  Create the core namespace
 
 	// Create the core application object
-	var app = window.app = new AppObject();
+	var app = window.app = new window.AppObject();
 
 	// Set the app object as the default class namespace
 	Class.namespace(app);
 
 	// Bind AppObject onto app
-	app.AppObject = AppObject; window.AppObject = void(0);
+	app.AppObject = window.AppObject; window.AppObject = void(0);
 
 	// This is where application config will be defined. These settings
 	// should not be changed in place. To configure your app, create a
@@ -370,41 +371,52 @@
 		//    });
 		// 
 		_findAttribute: function(attr) {
-			var current = this.attributes;
+			var self = this;
+			var current = self.attributes;
 			var levels = attr.split('.');
 			var last = levels.length - 1;
 			
 			for (var next, i = 0; i < last; i++) {
+				if (! isMutable(current)) {break;}
+
 				next = levels[i];
 				current = current[next];
 			}
 
-			var lastLevel = levels[last];
-			var currentValue = current[lastLevel];
+			current = current || { };
 
-			var setter = this._setters[attr] || null;
-			var getter = this._getters[attr] || null;
-			
-			if (getter) {
-				currentValue = getter(currentValue);
-			}
+			var lastLevel = levels[last];
+
+			var setter = self._setters[attr] || null;
+			var getter = self._getters[attr] || null;
 
 			return {
 				obj: current,
 				attr: lastLevel,
 				attrLevels: levels,
-				value: currentValue,
+				get: function() {
+					var value = current[lastLevel];
+					return getter ? getter(value) : value;
+				},
 				set: function(value) {
-					current[lastLevel] = setter ? setter(value, currentValue) : value;
+					if (setter) {
+						setter.call(self, value, set, current, self);
+					} else {
+						set(value);
+					}
 				}
 			};
+
+			function set(value) {
+				current[lastLevel] = value;
+			}
 		},
 
 		// 
 		// Get the value of an attribute
 		// 
 		get: function(attr) {
-			return this._findAttribute(attr).value;
+			return this._findAttribute(attr).get();
 		},
 
 		// 
@@ -414,12 +426,15 @@
 		set: function(attr, value) {
 			attr = this._findAttribute(attr);
 
-			var isObject =!! (attr.value && typeof attr.value === 'object');
-			var oldValue = isObject ? JSON.stringify(attr.value) : attr.value;
-			var newValue = isObject ? JSON.stringify(value) : value;
+			var current = attr.get();
+			var isObject =!! (current && typeof current === 'object');
+			var oldValue = isObject ? JSON.stringify(current) : current;
+
+			attr.set(value);
+
+			var newValue = isObject ? JSON.stringify(attr.get()) : attr.get();
 
 			if (oldValue !== newValue) {
-				attr.set(value);
 				var topLevel = attr.attrLevels[0];
 				this.emit('change.' + topLevel, this.attributes[topLevel]);
 
@@ -437,20 +452,22 @@
 		mod: function(attr, func) {
 			attr = this._findAttribute(attr);
 
-			var isObject =!! (attr.value && typeof attr.value === 'object');
-			var oldValue = isObject ? JSON.stringify(attr.value) : attr.value;
+			var current = attr.get();
+			var isObject =!! (current && typeof current === 'object');
+			var oldValue = isObject ? JSON.stringify(current) : current;
 
-			func(attr.value);
+			func(current);
 
-			var newValue = isObject ? JSON.stringify(attr.value) : attr.value;
+			// NOTE: We don't really need to go through the setter because the
+			// value has already been changed in place, but there may be some
+			// kind of other logic in the setter that is supposed to run, so
+			// I don't really know how to handle that...
+			
+			// attr.set(attr.value);
+
+			var newValue = isObject ? JSON.stringify(attr.get()) : attr.get();
 
 			if (oldValue !== newValue) {
-				// NOTE: We don't really need to go through the setter because the
-				// value has already been changed in place, but there may be some
-				// kind of other logic in the setter that is supposed to run, so
-				// I don't really know how to handle that...
-				
-				// attr.set(attr.value);
 				var topLevel = attr.attrLevels[0];
 				this.emit('change.' + topLevel, this.attributes[topLevel]);
 
@@ -1586,6 +1603,13 @@
 	// 
 	function varType(value) {
 		return Object.prototype.toString.call(value).slice(8, -1);
+	}
+
+	// 
+	// Tests if a variable is mutable (object/function)
+	// 
+	function isMutable(value) {
+		return !! (value && (typeof value === 'object' || typeof value === 'function'));
 	}
 
 }());

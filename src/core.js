@@ -259,7 +259,10 @@
 		loadSaveResponses: true,
 
 		// Should delegate events be used by default?
-		delegateEvents: true
+		delegateEvents: true,
+
+		// Should absolute URLs (not relative to apiUrl) be allowed?
+		allowAbsoluteUrls: false
 	};
 
 	// Expose a logging utility
@@ -886,6 +889,11 @@
 				object = this._create(object);
 			}
 			this.push(object);
+
+			this.emit('change');
+			this.emit('add');
+			
+			return object;
 		},
 
 		// 
@@ -1445,6 +1453,9 @@
 // -------------------------------------------------------------
 //  XhrRequest Class
 	
+	var doubleSlashStart = /^\/\//;
+	var schemeStart = /^([a-zA-Z]+):\/\//;
+	
 	Class('XhrRequest').Extends('AppObject', {
 
 		xhr: null,
@@ -1463,9 +1474,16 @@
 			this.body    = body;
 			this._meta   = { };
 
+			// Only prepend the apiUrl if needed
+			if (! (app.config.allowAbsoluteUrls &&
+				(schemeStart.test(url) || doubleSlashStart.test(url))
+			)) {
+				url = app.config.apiUrl + url;
+			}
+
 			// This is the object that we will pass to jQuery.ajax
 			this.config = {
-				url:          app.config.apiUrl + url,
+				url:          url,
 				type:         method,
 				async:        true,
 				cache:        false,

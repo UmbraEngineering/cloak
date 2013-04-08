@@ -1,6 +1,6 @@
 # cloak
 
-_Version 0.2.2-dev_
+_Version 0.2.5-dev_
 
 Cloak.js is a client-side MVC web application framework. Inspired greatly by [Backbone.js](http://backbonejs.org/), Cloak.js has many similar features and should be very easy to learn for anyone familiar with Backbone.js.
 

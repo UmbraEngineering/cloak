@@ -1,5 +1,5 @@
 /**
- * Cloak Framework Core - v0.2.5
+ * Cloak Framework Core - v0.2.5-dev
  *
  * Author: James Brumond
  * Copyright 2013 Umbra Engineering

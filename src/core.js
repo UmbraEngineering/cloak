@@ -1,5 +1,5 @@
 /**
- * Cloak Framework Core - v0.2.4
+ * Cloak Framework Core - v0.2.5
  *
  * Author: James Brumond
  * Copyright 2013 Umbra Engineering
@@ -931,17 +931,6 @@
 	// -------------------------------------------------------------
 
 		// 
-		// Find an object in the collection by ID
-		// 
-		findById: function(id) {
-			return this.find(function(obj) {
-				return obj.attributes[app.config.idKey] === id;
-			});
-		},
-
-	// -------------------------------------------------------------
-
-		// 
 		// Builds an array of objects simplified with obj.toXhr
 		// 
 		toXhr: function(arg1) {
@@ -1090,6 +1079,16 @@
 
 		find: function(callback) {
 			return _.find(this.objects, callback);
+		},
+
+		findByAttr: function(attr, value) {
+			return this.find(function(obj) {
+				return obj.attributes[attr] === value;
+			});
+		},
+
+		findById: function(id) {
+			return this.findByAttr(app.config.idKey, id);
 		},
 
 		filter: function(callback) {

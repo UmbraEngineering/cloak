@@ -845,7 +845,7 @@
 		construct: function(opts) {
 			// Set the default model type to the base model class, allowing
 			// any models as content
-			this.Model = app.Model;
+			this.Model = this.Model || app.Model;
 
 			this.construct.parentApply(this, arguments);
 

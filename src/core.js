@@ -1,5 +1,9 @@
 /**
- * Cloak Framework Core
+ * Cloak Framework Core - v0.2.4
+ *
+ * Author: James Brumond
+ * Copyright 2013 Umbra Engineering
+ * Dual licensed under MIT and GPL
  */
 
 /*jshint browser: true, bitwise: false, camelcase: false, eqnull: true, latedef: false,

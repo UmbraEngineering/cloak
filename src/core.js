@@ -1,5 +1,5 @@
 /**
- * Cloak Framework Core - v0.2.5-dev
+ * Cloak Framework Core - v0.2.6-dev
  *
  * Author: James Brumond
  * Copyright 2013 Umbra Engineering
@@ -221,7 +221,14 @@
 //  Create the core namespace
 
 	// Create the core application object
-	var app = window.app = new window.AppObject();
+	var app = new window.AppObject();
+
+	// Export the app object how ever it needs to be done
+	if (typeof module === 'object' && module.exports) {
+		module.exports = app;
+	} else {
+		window.app = app;
+	}
 
 	// Set the app object as the default class namespace
 	Class.namespace(app);

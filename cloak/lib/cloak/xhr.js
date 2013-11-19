@@ -3,12 +3,10 @@
 // XHR classes
 // 
 
-console.log('Foo');
-
 var Q          = require('q');
 var $          = require('jquery');
-var base64     = require('base64');
 var cloak      = require('cloak');
+var base64     = require('cloak/base64');
 var AppObject  = require('cloak/app-object');
 
 // 
@@ -32,7 +30,7 @@ var Queue = exports.Queue = AppObject.extend({
 					self.running = null;
 					self.next();
 				});
-				self.trigger('startRequest', {req: self.running});
+				self.emit('startRequest', {req: self.running});
 				self.running.start();
 			}
 		}, 0);
@@ -48,7 +46,7 @@ var Queue = exports.Queue = AppObject.extend({
 		}
 
 		this.queue.push(req);
-		this.trigger('queue', {req: req});
+		this.emit('queue', {req: req});
 		this.next();
 		return req;
 	},
@@ -136,13 +134,13 @@ var XhrRequest = exports.XhrRequest = AppObject.extend({
 	// 
 	start: function() {
 		cloak.log('XHR: ' + this.method + ' ' + this.url + ' ' + this.config.data);
-		this.trigger('start', {req: this});
+		this.emit('start', this);
 		this.xhr = $.ajax(this.config);
 	},
 
 	// 
 	// This is called when the XHR is complete, and handles parsing the response
-	// and triggering events.
+	// and emiting events.
 	// 
 	oncomplete: function(xhr, status) {
 		try {
@@ -151,11 +149,11 @@ var XhrRequest = exports.XhrRequest = AppObject.extend({
 			this.json = { };
 		}
 
-		this.trigger('done', {req: this});
-		this.trigger(status, {req: this});
+		this.emit('done', this);
+		this.emit(status, this);
 
 		if (status === 'success' || status === 'error') {
-			this.trigger(status + '.' + xhr.status, {req: this});
+			this.emit(status + '.' + xhr.status, this);
 		}
 	},
 
@@ -165,7 +163,7 @@ var XhrRequest = exports.XhrRequest = AppObject.extend({
 	abort: function() {
 		if (this.xhr && this.xhr.abort) {
 			this.xhr.abort();
-			this.trigger('abort', {req: this});
+			this.emit('abort', this);
 		}
 	}
 

@@ -41,6 +41,6 @@ module.exports = function(grunt) {
 
 // --------------------------------------------------------
 
-	grunt.registerTask('default', ['copy', 'commonjs', 'concat:lib', 'concat:app']);
+	grunt.registerTask('default', ['commonjs', 'concat:lib', 'concat:app']);
 
 };

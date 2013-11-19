@@ -10,10 +10,6 @@ var handlebars  = require('handlebars');
 // 
 var View = module.exports = AppObject.extend({
 
-	$elem: null,
-	template: null,
-	events: null,
-
 	init: function() {
 		this._super();
 
@@ -63,7 +59,7 @@ var View = module.exports = AppObject.extend({
 	render: function(data, templateProperty) {
 		data = _.extend({ _uuid: this._uuid }, data || { });
 
-		this.trigger('render', {data: data});
+		this.emit('render', data);
 
 		templateProperty = templateProperty || 'template';
 

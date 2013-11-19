@@ -4,6 +4,14 @@
 		"selected_items":
 		[
 			[
+				"undersc",
+				"underscoreLib"
+			],
+			[
+				"unde",
+				"underscoreLib"
+			],
+			[
 				"A",
 				"AppObject"
 			],
@@ -36,48 +44,47 @@
 	"buffers":
 	[
 		{
-			"file": "cloak/src/cloak.js",
+			"file": "cloak-example/javascripts/views/welcome.js",
 			"settings":
 			{
-				"buffer_size": 1485,
+				"buffer_size": 180,
 				"line_ending": "Unix"
 			}
 		},
 		{
-			"file": "cloak/src/app-object.js",
+			"file": "cloak/lib/cloak/index.js",
 			"settings":
 			{
-				"buffer_size": 686,
+				"buffer_size": 1962,
 				"line_ending": "Unix"
 			}
 		},
 		{
-			"file": "cloak/legacy.js",
+			"file": "cloak/lib/cloak/xhr.js",
+			"settings":
+			{
+				"buffer_size": 3873,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "cloak/lib/cloak/legacy.js",
 			"settings":
 			{
 				"buffer_size": 40294,
-				"line_ending": "Unix",
-				"name": "/**"
-			}
-		},
-		{
-			"file": "cloak/src/view.js",
-			"settings":
-			{
-				"buffer_size": 5269,
 				"line_ending": "Unix"
 			}
 		},
 		{
-			"file": "cloak-example/javascripts/views/list.js",
+			"file": "cloak/lib/cloak/app-object.js",
 			"settings":
 			{
-				"buffer_size": 325,
+				"buffer_size": 894,
 				"line_ending": "Unix"
 			}
 		}
 	],
-	"build_system": "",
+	"build_system": "Packages/User/grunt.sublime-build",
 	"command_palette":
 	{
 		"height": 0.0,
@@ -104,17 +111,44 @@
 	},
 	"file_history":
 	[
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak-example/Gruntfile.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/cloak/app-object.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/cloak/class.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/q.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/cloak/model.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/cloak/view.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak-example/index.html",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak-example/node_modules/common.js/lib/index.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak-example/stylesheets/styles.css",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak-example/javascripts/views/welcome.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/cloak/index.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/history/history.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/handlebars.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/jquery.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/json2.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/underscore.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/base64.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/history/html4.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/history/index.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/cloak/xhr.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/cloak/router.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/cloak/collection.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/cloak/legacy.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/history/adapter.jquery.js",
+		"/home/james/.config/sublime-text-3/Packages/User/grunt.sublime-build",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak-example/package.json",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/legacy.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/src/cloak.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/src/app-object.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/src/router.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/src/view.js",
 		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/src/model.js",
+		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak-example/javascripts/views/list.js",
 		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak-example/javascripts/models/item.js",
 		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak-example/javascripts/models/user.js",
-		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/src/router.js",
 		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/src/xhr.js",
-		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/base64.js",
-		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/src/view.js",
 		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/src/collection.js",
 		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/src/class.js",
-		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/underscore.js",
-		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak/lib/q.js",
 		"/home/james/Desktop/projects/umbra/run/lib/index.js",
 		"/home/james/Desktop/projects/umbra/cloak-dagger/cloak-example/javascripts/models/list.js",
 		"/home/james/Desktop/projects/umbra/commonjs/readme.md",
@@ -166,6 +200,7 @@
 		"case_sensitive": false,
 		"find_history":
 		[
+			"exports",
 			"image",
 			"ie"
 		],
@@ -185,58 +220,29 @@
 	"groups":
 	[
 		{
-			"selected": 3,
+			"selected": 4,
 			"sheets":
 			[
 				{
 					"buffer": 0,
-					"file": "cloak/src/cloak.js",
+					"file": "cloak-example/javascripts/views/welcome.js",
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 1485,
+						"buffer_size": 180,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								1139,
-								1139
+								0,
+								0
 							]
 						],
 						"settings":
 						{
-							"syntax": "Packages/JavaScript/JavaScript.tmLanguage",
-							"translate_tabs_to_spaces": false
-						},
-						"translation.x": 0.0,
-						"translation.y": 540.0,
-						"zoom_level": 1.0
-					},
-					"type": "text"
-				},
-				{
-					"buffer": 1,
-					"file": "cloak/src/app-object.js",
-					"semi_transient": false,
-					"settings":
-					{
-						"buffer_size": 686,
-						"regions":
-						{
-						},
-						"selection":
-						[
-							[
-								330,
-								330
-							]
-						],
-						"settings":
-						{
-							"syntax": "Packages/JavaScript/JavaScript.tmLanguage",
-							"translate_tabs_to_spaces": false
+							"syntax": "Packages/JavaScript/JavaScript.tmLanguage"
 						},
 						"translation.x": 0.0,
 						"translation.y": 0.0,
@@ -245,8 +251,64 @@
 					"type": "text"
 				},
 				{
+					"buffer": 1,
+					"file": "cloak/lib/cloak/index.js",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 1962,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								1851,
+								1851
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/JavaScript/JavaScript.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 972.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
 					"buffer": 2,
-					"file": "cloak/legacy.js",
+					"file": "cloak/lib/cloak/xhr.js",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 3873,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								25,
+								25
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/JavaScript/JavaScript.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 1998.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 3,
+					"file": "cloak/lib/cloak/legacy.js",
 					"semi_transient": false,
 					"settings":
 					{
@@ -257,37 +319,8 @@
 						"selection":
 						[
 							[
-								34563,
-								34563
-							]
-						],
-						"settings":
-						{
-							"auto_name": "/**",
-							"syntax": "Packages/JavaScript/JavaScript.tmLanguage",
-							"translate_tabs_to_spaces": false
-						},
-						"translation.x": 0.0,
-						"translation.y": 24528.0,
-						"zoom_level": 1.0
-					},
-					"type": "text"
-				},
-				{
-					"buffer": 3,
-					"file": "cloak/src/view.js",
-					"semi_transient": false,
-					"settings":
-					{
-						"buffer_size": 5269,
-						"regions":
-						{
-						},
-						"selection":
-						[
-							[
-								4323,
-								4323
+								1905,
+								1905
 							]
 						],
 						"settings":
@@ -296,26 +329,26 @@
 							"translate_tabs_to_spaces": false
 						},
 						"translation.x": 0.0,
-						"translation.y": 3132.0,
+						"translation.y": 228.0,
 						"zoom_level": 1.0
 					},
 					"type": "text"
 				},
 				{
 					"buffer": 4,
-					"file": "cloak-example/javascripts/views/list.js",
+					"file": "cloak/lib/cloak/app-object.js",
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 325,
+						"buffer_size": 894,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								316,
-								316
+								812,
+								812
 							]
 						],
 						"settings":
@@ -363,6 +396,10 @@
 		]
 	},
 	"menu_visible": true,
+	"output.exec":
+	{
+		"height": 262.0
+	},
 	"project": "cloak-dagger.sublime-project",
 	"replace":
 	{
@@ -391,11 +428,11 @@
 	},
 	"select_symbol":
 	{
-		"height": 0.0,
+		"height": 392.0,
 		"selected_items":
 		[
 		],
-		"width": 0.0
+		"width": 701.0
 	},
 	"settings":
 	{

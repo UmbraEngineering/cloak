@@ -6,13 +6,23 @@
 // 
 // Inspired by base2 and Prototype
 // 
-// Modified for use in a CommonJS environment
+// Modified for use in Cloak.js by James Brumond
 // 
 
 var initializing = false, fnTest = /xyz/.test(function(){xyz;}) ? /\b_super\b/ : /.*/;
 
 // The base Class implementation (does nothing)
 var Class = module.exports = function(){};
+
+// Here we allow setting of a callback to run whenever this model is extended
+Class.onExtend = null;
+
+// This function just passes the first param to the constructor. This is limited
+// in the sense that the default only allows one param, but anything needing more
+// than one is likely custom and will be written accordingly
+Class.create = function(param) {
+	return new this(param);
+};
 
 // Create a new Class that inherits from this class
 Class.extend = function(prop) {
@@ -63,6 +73,14 @@ Class.extend = function(prop) {
 
 	// And make this class extendable
 	Class.extend = arguments.callee;
+
+	// Add the create method to this class
+	Class.create = this.create;
+
+	// If this class has an onExtend method, call it now with the completed class
+	if (typeof this.onExtend === 'function') {
+		this.onExtend.call(Class);
+	}
  
 	return Class;
 };

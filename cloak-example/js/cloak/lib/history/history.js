@@ -1,4 +1,6 @@
-/**
+;require._modules["/cloak/lib/history/history.js"] = (function() { var __filename = "/cloak/lib/history/history.js"; var __dirname = "/cloak/lib/history"; var module = { loaded: false, exports: { }, filename: __filename, dirname: __dirname, require: null, call: function() { var require = module.require; module.loaded = true; module.call = function() { }; __module__(); }, parent: null, children: [ ] }; var exports = module.exports; 
+ /* ==  Begin source for module /cloak/lib/history/history.js  == */ var __module__ = function() { 
+ /**
  * History.js Core
  * @author Benjamin Arthur Lupton <contact@balupton.com>
  * @copyright 2010-2011 Benjamin Arthur Lupton <contact@balupton.com>
@@ -1940,4 +1942,5 @@
 	// Try and Initialise History
 	History.init();
 
-})(window);
+})(window); 
+ }; /* ==  End source for module /cloak/lib/history/history.js  == */ module.require = require._bind(module); return module; }());;

@@ -1,4 +1,6 @@
-/**
+;require._modules["/cloak/lib/cloak/index.js"] = (function() { var __filename = "/cloak/lib/cloak/index.js"; var __dirname = "/cloak/lib/cloak"; var module = { loaded: false, exports: { }, filename: __filename, dirname: __dirname, require: null, call: function() { var require = module.require; module.loaded = true; module.call = function() { }; __module__(); }, parent: null, children: [ ] }; var exports = module.exports; 
+ /* ==  Begin source for module /cloak/lib/cloak/index.js  == */ var __module__ = function() { 
+ /**
  * Cloak Framework Core - v1.0.0
  *
  * Author: James Brumond
@@ -80,3 +82,5 @@ function time() {
 // The main request queue used for all internally controlled tasks
 // 
 exports.xhr = new RequestQueue();
+ 
+ }; /* ==  End source for module /cloak/lib/cloak/index.js  == */ module.require = require._bind(module); return module; }());;

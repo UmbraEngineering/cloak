@@ -1,4 +1,6 @@
-
+;require._modules["/cloak/lib/cloak/class.js"] = (function() { var __filename = "/cloak/lib/cloak/class.js"; var __dirname = "/cloak/lib/cloak"; var module = { loaded: false, exports: { }, filename: __filename, dirname: __dirname, require: null, call: function() { var require = module.require; module.loaded = true; module.call = function() { }; __module__(); }, parent: null, children: [ ] }; var exports = module.exports; 
+ /* ==  Begin source for module /cloak/lib/cloak/class.js  == */ var __module__ = function() { 
+ 
 // 
 // Simple JavaScript Inheritance
 // By John Resig http://ejohn.org/
@@ -66,3 +68,5 @@ Class.extend = function(prop) {
  
 	return Class;
 };
+ 
+ }; /* ==  End source for module /cloak/lib/cloak/class.js  == */ module.require = require._bind(module); return module; }());;

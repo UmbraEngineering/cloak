@@ -2,7 +2,7 @@
 var cloak     = require('cloak');
 var History   = require('history');
 var AppObject = require('cloak/app-object');
-var _         = require(cloak.config.underscoreLib);
+var _         = require('cloak/underscore');
 
 // 
 // Router class

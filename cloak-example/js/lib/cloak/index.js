@@ -1,4 +1,6 @@
-/**
+;require._modules["/lib/cloak/index.js"] = (function() { var __filename = "/lib/cloak/index.js"; var __dirname = "/lib/cloak"; var module = { loaded: false, exports: { }, filename: __filename, dirname: __dirname, require: null, call: function() { var require = module.require; module.loaded = true; module.call = function() { }; __module__(); }, parent: null, children: [ ] }; var process = { title: "browser", nextTick: function(func) { setTimeout(func, 0); } }; var exports = module.exports; 
+ /* ==  Begin source for module /lib/cloak/index.js  == */ var __module__ = function() { 
+ /**
  * Cloak Framework Core - v1.0.0
  *
  * Author: James Brumond
@@ -13,7 +15,18 @@
 /*global Class: true, EventEmitter2: true, _: true, Handlebars: true, console: true */
 
 var $ = require('jquery');
-var _ = require('cloak/underscore');
+
+// 
+// Allow both underscore and lodash
+// 
+var _, underscoreLib;
+try {
+	_ = require('underscore');
+	underscoreLib = 'underscore';
+} catch (e) {
+	_ = require('lodash');
+	underscoreLib = 'lodash';
+}
 
 // 
 // Avoid errors in older browsers and IE
@@ -25,36 +38,16 @@ if (! window.console.log) {window.console.log = function () { };}
 // App configuration goes here
 // 
 exports.config = {
+	// Are we using underscore or lodash?
+	underscoreLib: underscoreLib,
+
 	// EventEmitter2 configuration for all AppObjects
-	ee2: {
+	eventEmitter: {
 		wildcard: false,
 		delimiter: '.',
 		newListener: false,
 		maxListeners: 20
-	},
-
-	// URL to your API server
-	apiUrl: location.protocol + '//' + location.host,
-
-	// The property name used for passing model ids to and from
-	// the server
-	idKey: 'id',
-
-	// Should id values be automatically copied over to models after
-	// a GET request?
-	autoAssignId: true,
-
-	// Should the ID of a newly created object be found from the Location header?
-	getIdFromCreate: false,
-
-	// Should repsonse data be loaded into the model after a save call?
-	loadSaveResponses: true,
-
-	// Should delegate events be used by default?
-	delegateEvents: true,
-
-	// Should absolute URLs (not relative to apiUrl) be allowed?
-	allowAbsoluteUrls: false
+	}
 };
 
 // 
@@ -92,30 +85,13 @@ function time() {
 }
 
 // 
-// Converts a standardized event string (eg "foo.bar") into the correct
-// format as defined by {cloak.config.ee2}
+// Load the XHR queue class
 // 
-exports.event = function(eventString) {
-	if (exports.config.ee2.delimiter !== '.') {
-		eventString = eventString.split('.').join(exports.config.ee2.delimiter);
-	}
-	return eventString;
-};
+var RequestQueue = require('cloak/xhr').Queue;
 
 // 
-// Normalizes objects with ID to use the correct idKey as defined in
-// {cloak.config.idKey}
+// The main request queue used for all internally controlled tasks
 // 
-exports.idObj = function(id) {
-	var obj;
-	if (typeof id === 'string') {
-		obj = { };
-		obj[exports.config.idKey] = id;
-	} else if (typeof id === 'object' && id) {
-		var key = id.id ? 'id' : '_id';
-		obj = id;
-		obj[exports.config.idKey] = obj[key];
-		delete obj[key];
-	}
-	return obj;
-}
+exports.xhr = new RequestQueue();
+ 
+ }; /* ==  End source for module /lib/cloak/index.js  == */ module.require = require._bind(module); return module; }());;

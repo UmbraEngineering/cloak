@@ -1,7 +1,7 @@
 
 var cloak         = require('cloak');
 var Class         = require('cloak/class');
-var _             = require(cloak.config.underscoreLib);
+var _             = require('cloak/underscore');
 var EventEmitter  = require('eventemitter2').EventEmitter2;
 
 var nextId = 1;

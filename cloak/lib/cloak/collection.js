@@ -2,7 +2,7 @@
 var cloak      = require('cloak');
 var Model      = require('cloak/model');
 var AppObject  = require('cloak/app-object');
-var _          = require(cloak.config.underscoreLib);
+var _          = require('cloak/underscore');
 
 // 
 // Collection class
@@ -60,34 +60,51 @@ var Collection = module.exports = AppObject.extend({
 	},
 
 	// 
-	// Checks if a model exists already in the collection
+	// Find the model represented by the given arg in the collection
 	// 
-	contains: function(what) {
-		return !! _(this.models).find(function(model) {
+	find: function(what) {
+		return _.find(this.models, function(model) {
 			return model.is(what);
 		});
 	},
+
+	// 
+	// Checks if a model exists already in the collection
+	// 
+	contains: function(what) {
+		return !! this.find(what);
+	},
+
+	// 
+	// Get the location of a given model in the collection
+	// 
+	indexOf: function(what) {
+		return _.indexOf(this.models, this.find(what));
+	},
+
+// --------------------------------------------------------
 	
 	// 
 	// Add models to the collection at the given index (or at the end, if no
 	// index is given)
 	// 
-	add: function(index) {
-		var models = 1;
-		
+	add: function(index, models) {
 		// If no index was given, default to the end of the collection
 		if (typeof index !== 'number') {
-			index = -1;
-			models = 0;
+			models = index, index = -1;
+		}
+
+		// If given a single item, wrap it in an array
+		if (! _.isArray(models)) {
+			models = [ models ];
 		}
 
 		// Get a list of viable models to add
-		models = Array.prototype.slice.call(arguments, models);
 		models = _.map(models, this.toModel.bind(this));
 
 		// Anything we were given that is invalid will be false after running toModel
 		// above, so {_.identity} is enough to filter them out
-		models = _.filter(models, _.identity);
+		models = _.compact(models);
 
 		// Check for duplicates if this collection must be unique
 		if (this.unique) {
@@ -111,8 +128,64 @@ var Collection = module.exports = AppObject.extend({
 		}
 
 		return this;
+	},
+
+	// 
+	// Remove the given models from the collection
+	// 
+	remove: function(models) {
+		// If given a single item, wrap it in an array
+		if (! _.isArray(models)) {
+			models = [ models ];
+		}
+
+		// Store the removed models here so we can give them to the remove event
+		var removed = [ ];
+
+		// Filter out the models in the collection that match those given
+		this.models = _.rejectInPlace(this.models, function(model) {
+			return !! _.find(models, function(matchAgainst) {
+				return model.is(matchAgainst) && removed.push(model);
+			});
+		});
+
+		// Was anything actually removed?
+		if (removed.length) {
+			this.emit('remove', removed);
+		}
+
+		return this;
+	},
+
+// --------------------------------------------------------
+
+	unserialize: function(data) {
+		// 
 	}
 
+});
+
+// --------------------------------------------------------
+
+// 
+// Underscore function mappings
+// 
+
+var underscoreMethods = [
+	'forEach', 'each', 'map', 'collect', 'reduce', 'foldl', 'inject',
+	'reduceRight', 'foldr', 'detect', 'filter', 'select', 'reject',
+	'every', 'all', 'some', 'any', 'invoke', 'max', 'min',
+	'toArray', 'size', 'first', 'head', 'take', 'initial', 'rest',
+	'tail', 'drop', 'last', 'without', 'difference', 'shuffle',
+	'isEmpty', 'chain'
+];
+
+_.each(underscoreMethods, function(method) {
+	Collection.prototype[method] = function() {
+		var args = _.toArray(arguments);
+		args.unshift(this.models);
+		return _[method].apply(_, args);
+	};
 });
 
 // --------------------------------------------------------
@@ -168,5 +241,8 @@ var Definition = exports.Definition = Class.extend({
 // Check if a variable is a Collection (not a collection instance)
 // 
 Collection.isCollection = function(value) {
+	if (value instanceof Definition) {
+		return true;
+	}
 	return (typeof value === 'function' && value.inherits && value.inherits(Collection));
 };

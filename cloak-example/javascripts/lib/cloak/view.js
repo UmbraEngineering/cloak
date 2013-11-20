@@ -2,13 +2,17 @@
 var cloak       = require('cloak');
 var AppObject   = require('cloak/app-object');
 var $           = require('jquery');
-var _           = require('cloak/underscore');
+var _           = require(cloak.config.underscoreLib);
 var handlebars  = require('handlebars');
 
 // 
 // View class
 // 
 var View = module.exports = AppObject.extend({
+
+	$elem: null,
+	template: null,
+	events: null,
 
 	init: function() {
 		this._super();
@@ -59,7 +63,7 @@ var View = module.exports = AppObject.extend({
 	render: function(data, templateProperty) {
 		data = _.extend({ _uuid: this._uuid }, data || { });
 
-		this.emit('render', data);
+		this.trigger('render', {data: data});
 
 		templateProperty = templateProperty || 'template';
 

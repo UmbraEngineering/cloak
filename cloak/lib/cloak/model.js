@@ -2,7 +2,7 @@
 var cloak       = require('cloak');
 var AppObject   = require('cloak/app-object');
 var Collection  = require('cloak/collection');
-var _           = require(cloak.config.underscoreLib);
+var _           = require('cloak/underscore');
 
 // 
 // Model class
@@ -73,7 +73,9 @@ var Model = module.exports = AppObject.extend({
 	// 
 	_initializeModelsAndCollections: function(attrs, key) {
 		var value = attrs[key];
-		if (Model.isModel(value) || Collection.isCollection(value)) {
+		if (Model.isModel(value)) {
+			attrs[key] = null;
+		} else if (Collection.isCollection(value)) {
 			attrs[key] = new value();
 			attrs[key].parent = this;
 			// Re-emit change events from the child model/collection
@@ -197,7 +199,7 @@ var Model = module.exports = AppObject.extend({
 		if (value instanceof Collection) {
 			return Collection.map(this.serializeChild);
 		}
-		return child.get(cloak.config.idKey);
+		return child.id();
 	},
 
 	// 
@@ -213,9 +215,9 @@ var Model = module.exports = AppObject.extend({
 			// Is this field a model?
 			if (Model.isModel(origAttrs[key])) {
 				// These are the same model, just update the data
-				if (attrs[key].is(value)) {
+				if (attrs[key] instanceof Model && attrs[key].is(value)) {
 					if (typeof value !== 'string') {
-						attrs[key].unserialize(value);
+						return attrs[key].unserialize(value);
 					}
 				}
 				// These are different, we need to replace the old one
@@ -230,7 +232,7 @@ var Model = module.exports = AppObject.extend({
 			
 			// Is this field a collection?
 			else if (Collection.isCollection(origAttrs[key])) {
-				// 
+				return attrs[key].unserialize(data[key]);
 			}
 
 			attrs[key] = value;

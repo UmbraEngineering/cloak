@@ -39,7 +39,7 @@ var Queue = exports.Queue = AppObject.extend({
 	run: function(method, url, data) {
 		var req;
 
-		if (cloak.config.socketio) {
+		if (cloak.config.socket && url.charAt(0) === '/') {
 			req = new SocketRequest(method, url, data);
 		} else {
 			req = new XhrRequest(method, url, data);
@@ -52,23 +52,23 @@ var Queue = exports.Queue = AppObject.extend({
 	},
 
 	get: function(url, data) {
-		return this.run('GET', url, data);
+		return this.run('get', url, data);
 	},
 
 	post: function(url, data) {
-		return this.run('POST', url, data);
+		return this.run('post', url, data);
 	},
 
 	put: function(url, data) {
-		return this.run('PUT', url, data);
+		return this.run('put', url, data);
 	},
 
 	patch: function(url, data) {
-		return this.run('PATCH', url, data);
+		return this.run('patch', url, data);
 	},
 
 	del: function(url, data) {
-		return this.run('DELETE', url, data);
+		return this.run('delete', url, data);
 	}
 
 });
@@ -90,7 +90,7 @@ var XhrRequest = exports.XhrRequest = AppObject.extend({
 		// The config object to pass to $.ajax
 		this.config = {
 			url: url,
-			type: method,
+			type: method.toUpperCase(),
 			async: true,
 			cache: false,
 			dataType: 'json',
@@ -178,11 +178,55 @@ var SocketRequest = exports.SocketRequest = AppObject.extend({
 
 	init: function(method, url, data) {
 		this._super();
-		// 
+
+		this.method  = method.toLowerCase();
+		this.url     = url;
+		this.data    = data;
+
+		// The Socket.io emit payload
+		this.payload = {
+			method: this.method,
+			url: this.url,
+			body: this.data,
+			headers: [
+				['Content-Type': 'application/json']
+			]
+		};
+
+		// Check if we are using an authentication token
+		if (cloak.auth.token) {
+			this.payload.headers.push(['Auth-Token', cloak.auth.token]);
+		}
 	},
 
+	// 
+	// Start running the request
+	// 
 	start: function() {
-		// 
+		cloak.log('Socket: ' + this.method + ' ' + this.url + ' ' + this.config.data);
+		this.emit('start', this);
+		cloak.config.socket.emit(this.method, this.payload, _.bind(this.oncomplete, this));
+	},
+
+	// 
+	// This is called when the XHR is complete, and handles parsing the response
+	// and emiting events.
+	// 
+	oncomplete: function(res) {
+		var status = (res.status < 400) ? 'success' : 'error';
+		this.json = res.body;
+		this.emit('done', this);
+		this.emit(status, this);
+		this.emit(status + '.' + res.status, this);
+	},
+
+	// 
+	// Abort the running request if we can
+	// 
+	//   NOTE: Abort is kind of meaningless in the realm of socket.io
+	// 
+	abort: function() {
+		// pass
 	}
 
 });

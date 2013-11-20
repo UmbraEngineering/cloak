@@ -40,10 +40,6 @@ exports.config = {
 	// the server
 	idKey: 'id',
 
-	// Should id values be automatically copied over to models after
-	// a GET request?
-	autoAssignId: true,
-
 	// Should the ID of a newly created object be found from the Location header?
 	getIdFromCreate: false,
 
@@ -54,7 +50,10 @@ exports.config = {
 	delegateEvents: true,
 
 	// Should absolute URLs (not relative to apiUrl) be allowed?
-	allowAbsoluteUrls: false
+	allowAbsoluteUrls: false,
+
+	// Socket.io socket, if sockets are to be used
+	socket: null
 };
 
 // 

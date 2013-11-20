@@ -159,8 +159,48 @@ var Collection = module.exports = AppObject.extend({
 
 // --------------------------------------------------------
 
+	// 
+	// Serialize the collection into a data object
+	// 
+	serialize: function(deep) {
+		return this.map(deep
+			? function(model) {
+				return model.serialize();
+			}
+			: function(model) {
+				return model.id();
+			});
+	},
+	
+	// 
+	// Take a data object and import the contained models into the collection
+	// 
 	unserialize: function(data) {
-		// 
+		// Make sure we have an array
+		if (! _.isArray(data)) {
+			return this.emit('error', 'Collection::unserialize expects an array');
+		}
+
+		// Get a copy of the old model array so we can keep repeats
+		var old = this.models.slice();
+
+		// Empty out the models array (while keeping the same array object)
+		this.models.length = 0;
+
+		// Iterate through the contained data
+		for (var i = 0, c = data.length; i < c; i++) {
+			// Make sure we have a standardized object and then fetch the ID from it
+			var value = cloak.idObj(data[i]);
+			var id = value[cloak.config.idKey];
+
+			// Check if we already have a model matching these results
+			var model = _.find(old, function(model) {
+				return (model.id() === id);
+			});
+
+			// Put the model we found (or the new model) into the model array
+			this.models.push(model || this.model.create(value));
+		}
 	}
 
 });

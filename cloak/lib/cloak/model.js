@@ -174,14 +174,14 @@ var Model = module.exports = AppObject.extend({
 	// 
 	// Returns a simple Object structure representing the model and it's children
 	// 
-	serialize: function() {
+	serialize: function(deep) {
 		var self = this;
 		var result = { };
 
 		_.each(_.keys(self.attributes), function(key) {
 			var value = self.attributes[key];
 			if (value instanceof Model || value instanceof Collection) {
-				value = self.serializeChild(value);
+				value = self.serializeChild(value, deep);
 			}
 			result[key] = value;
 		});
@@ -195,11 +195,11 @@ var Model = module.exports = AppObject.extend({
 	// ID key, but this might be overridden to, for example, return a fully
 	// serialized child object.
 	// 
-	serializeChild: function(child) {
+	serializeChild: function(child, deep) {
 		if (value instanceof Collection) {
-			return Collection.map(this.serializeChild);
+			return child.serialize(deep);
 		}
-		return child.id();
+		return deep ? child.serialize : child.id();
 	},
 
 	// 
@@ -237,6 +237,162 @@ var Model = module.exports = AppObject.extend({
 
 			attrs[key] = value;
 		});
+	},
+
+// --------------------------------------------------------
+
+	// 
+	// Get the URL for this model instance
+	// 
+	urlAttr: /\{([^}]+)\}/,
+	reqUrl: function() {
+		var self = this;
+		// Replace any attribute placeholders in the URL
+		return this.url.replace(this.urlAttr, function(match, $1) {
+			var value = '';
+			// If the first character is a slash, this is an optional segment. That means that
+			// if the value in the placeholder block is falsey, nothing will be put in its place,
+			// but if not, then a slash will be prepended to the replacement
+			if (slash = ($1.charAt(0) === '/')) {
+				value = '/';
+				$1 = $1.slice(1);
+			}
+
+			// If the @ notation is used, circumvent the accessors and read directly from attributes
+			if ($1.charAt(0) === '@') {
+				value += self.attributes[$1.slice(1)];
+			}
+
+			// If the # notation is used, load the model ID with the .id() method
+			else if ($1 === '#') {
+				value += self.id();
+			}
+
+			// Otherwise, replace it with the attribute from .get(attr)
+			else {
+				value += self.get($1);
+			}
+
+			// If this is optional and empty, clear it out
+			if (slash && value === '/') {
+				value = '';
+			}
+
+			return value;
+		});
+	},
+
+// --------------------------------------------------------
+
+	// 
+	// Perform a GET request and update the loaded data
+	// 
+	load: function(query) {
+		this.emit('load', query);
+		
+		return Model.xhr.get(this.reqUrl(), query)
+			.on('ready', this.emits('loaded'))
+			.on('success', _.bind(this.onLoadSuccess, this));
+	},
+
+	// 
+	// Runs after a successful .load() call
+	// 
+	onLoadSuccess: function(req) {
+		try {
+			this.unserialize(req.json);
+		} catch (err) {
+			return this.emit('error', err);
+		}
+
+		req.emit('ready', req);
+	},
+
+// --------------------------------------------------------
+	
+	// 
+	// Saves the model to the server. Selects the request method based on whether
+	// or not the ID property is defined
+	// 
+	save: function() {
+		var method = this.id() ? 'put' : 'post';
+
+		this.emit('save', method);
+
+		return Model.xhr[method](this.reqUrl(), this.serialize())
+			.on('ready', this.emits('saved'))
+			.on('success', _.bind(this.onSaveSuccess, this));
+	},
+
+	//
+	// Selectively saves specific properties back to the server using
+	// a PATCH request
+	//
+	patch: function(arg1) {
+		var keys = _.isArray(arg1) ? arg1 : _.toArray(arguments);
+		var data = _.pick.apply(_, [this.serialize()].concat(keys));
+
+		this.emit('patch', keys);
+
+		return Model.xhr.patch(this.reqUrl(), data)
+			.on('ready', this.emits('patched', keys))
+			.on('success', _.bind(this.onSaveSuccess, this));
+	},
+
+	// 
+	// Runs after a successful .save() or .patch() call
+	// 
+	onSaveSuccess: function(req) {
+		// Check for a loadResponse meta flag
+		if (cloak.config.loadSaveResponses || req._meta.loadResponse) {
+			return this.onLoadSuccess(req);
+		}
+
+		req.emit('ready', req);
+	},
+
+// --------------------------------------------------------
+	
+	// 
+	// Delete the model from the server using a DELETE request
+	// 
+	del: function() {
+		// Don't allow deleting without an ID to avoid accidental deletion
+		// of entire list routes
+		if (this.id()) {
+			this.emit('delete');
+
+			return Model.xhr.del(this.reqUrl())
+				.on('success', this.emits('deleted'))
+				.on('success', _.bind(this.onDelSuccess, this));
+		}
+
+		throw new Error('Cannot make a DELETE request on a model with no ID');
+	},
+
+	// 
+	// Runs after a successful .del() call
+	// 
+	onDelSuccess: function(req) {
+		if (this.destroy) {
+			this.destroy();
+		}
+	},
+
+// --------------------------------------------------------
+	
+	// 
+	// Prepare a no longer needed model instance for garbage collection
+	// 
+	destroy: function() {
+		if (this.teardown) {
+			this.teardown();
+		}
+		for (var i in this) {
+			if (this.hasOwnProperty(this)) {
+				this[i] = null;
+			}
+		}
 	}
 
 });

@@ -44,6 +44,17 @@ var AppObject = module.exports = Class.extend({
 	},
 
 	// 
+	// An addition to EventEmitter2, this is basically just a partial application
+	// method for emit
+	// 
+	emits: function() {
+		var args = _.toArray(arguments);
+		args.unshift(this);
+		args.unshift(this.emit);
+		return _.bind.apply(_, args);
+	},
+
+	// 
 	// An addition to EventEmitter2, this method allows reemitting an event from
 	// a different source
 	// 

@@ -61,6 +61,7 @@ var AppObject = module.exports = Class.extend({
 	reemit: function(event) {
 		var self = this;
 		return function() {
+			event = event || this.event;
 			if (event.charAt(0) === '.') {
 				event = this.event + event;
 			} else if (event.charAt(event.length - 1) === '.') {

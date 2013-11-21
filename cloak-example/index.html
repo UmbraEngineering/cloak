@@ -26,8 +26,10 @@
 		// Add the /lib directory to the require path for easy lib loading
 		require.paths.push('/lib');
 
-		// Tell cloak.js to use socket.io
 		_.extend(require('cloak').config, {
+			// Collections should make dagger style requests
+			collectionRequestStyle: 'dagger',
+			// Tell cloak.js to use socket.io
 			socket: require('socket.io').connect('http://localhost')
 		});
 

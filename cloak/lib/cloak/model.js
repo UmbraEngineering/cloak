@@ -1,5 +1,6 @@
 
 var cloak       = require('cloak');
+var xhr         = require('cloak/xhr');
 var AppObject   = require('cloak/app-object');
 var Collection  = require('cloak/collection');
 var _           = require('cloak/underscore');
@@ -290,7 +291,7 @@ var Model = module.exports = AppObject.extend({
 	load: function(query) {
 		this.emit('load', query);
 		
-		return Model.xhr.get(this.reqUrl(), query)
+		return xhr.get(this.reqUrl(), query)
 			.on('ready', this.emits('loaded'))
 			.on('success', _.bind(this.onLoadSuccess, this));
 	},
@@ -319,7 +320,7 @@ var Model = module.exports = AppObject.extend({
 
 		this.emit('save', method);
 
-		return Model.xhr[method](this.reqUrl(), this.serialize())
+		return xhr[method](this.reqUrl(), this.serialize())
 			.on('ready', this.emits('saved'))
 			.on('success', _.bind(this.onSaveSuccess, this));
 	},
@@ -334,7 +335,7 @@ var Model = module.exports = AppObject.extend({
 
 		this.emit('patch', keys);
 
-		return Model.xhr.patch(this.reqUrl(), data)
+		return xhr.patch(this.reqUrl(), data)
 			.on('ready', this.emits('patched', keys))
 			.on('success', _.bind(this.onSaveSuccess, this));
 	},
@@ -362,7 +363,7 @@ var Model = module.exports = AppObject.extend({
 		if (this.id()) {
 			this.emit('delete');
 
-			return Model.xhr.del(this.reqUrl())
+			return xhr.del(this.reqUrl())
 				.on('success', this.emits('deleted'))
 				.on('success', _.bind(this.onDelSuccess, this));
 		}
@@ -400,9 +401,22 @@ var Model = module.exports = AppObject.extend({
 // --------------------------------------------------------
 
 // 
-// Make sure that new Model classes have a .Collection property
+// This function fetches the list endpoint URL for the model
+// 
+Model.url = function() {
+	return this.prototype.reqUrl.call({
+		attributes: { },
+		url: this.prototype.url,
+		id: function() { return null; },
+		get: function() { return null; }
+	});
+};
+
+// 
+// Make sure that new Model classes have the default static methods/properties
 // 
 Model.onExtend = function() {
+	this.url = Model.url;
 	this.onExtend = Model.onExtend;
 	this.Collection = Collection.extend({
 		model: this
@@ -415,15 +429,3 @@ Model.onExtend = function() {
 Model.isModel = function(value) {
 	return (typeof value === 'function' && value.inherits && value.inherits(Model));
 };
-
-// --------------------------------------------------------
-
-// 
-// Load the XHR queue class
-// 
-var RequestQueue = require('cloak/xhr').Queue;
-
-// 
-// The main request queue used for all internally controlled tasks
-// 
-Model.xhr = new RequestQueue();

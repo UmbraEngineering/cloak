@@ -76,6 +76,20 @@ var Queue = exports.Queue = AppObject.extend({
 // --------------------------------------------------------
 
 // 
+// Export a single queue
+// 
+exports.queue = new Queue();
+
+// 
+// Expose the queue's main methods
+// 
+_.each(['run', 'get', 'post', 'put', 'patch', 'del'], function(method) {
+	exports[method] = _.bind(exports.queue[method], exports.queue);
+});
+
+// --------------------------------------------------------
+
+// 
 // XhrRequest class
 // 
 var XhrRequest = exports.XhrRequest = AppObject.extend({
@@ -126,6 +140,10 @@ var XhrRequest = exports.XhrRequest = AppObject.extend({
 		} else {
 			this.config.data = JSON.stringify(data);
 			this.config.processData = false;
+		}
+
+		if (typeof this.initialize === 'function') {
+			this.initialize.apply(this, arguments);
 		}
 	},
 
@@ -196,6 +214,10 @@ var SocketRequest = exports.SocketRequest = AppObject.extend({
 		// Check if we are using an authentication token
 		if (cloak.auth.token) {
 			this.payload.headers.push(['Auth-Token', cloak.auth.token]);
+		}
+
+		if (typeof this.initialize === 'function') {
+			this.initialize.apply(this, arguments);
 		}
 	},
 

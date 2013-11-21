@@ -40,9 +40,6 @@ exports.config = {
 	// the server
 	idKey: 'id',
 
-	// Should the ID of a newly created object be found from the Location header?
-	getIdFromCreate: false,
-
 	// Should repsonse data be loaded into the model after a save call?
 	loadSaveResponses: true,
 
@@ -53,7 +50,10 @@ exports.config = {
 	allowAbsoluteUrls: false,
 
 	// Socket.io socket, if sockets are to be used
-	socket: null
+	socket: null,
+
+	// How should collections be loaded (either "dagger", "individual", or "custom")
+	collectionRequestStyle: 'individual'
 };
 
 // 

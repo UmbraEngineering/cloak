@@ -33,6 +33,17 @@ var Collection = module.exports = AppObject.extend({
 	},
 
 	// 
+	// Returns the URL that should be used for bulk operations on the collection's models.
+	// By default, this just returns the model's list endpoint URL, but it could be overriden,
+	// for example, to use a subresource URL like /model/123/subresources
+	// 
+	// @return string
+	// 
+	url: function() {
+		return this.model.url();
+	},
+
+	// 
 	// Filters incoming data to check if what we're given is valid as a model. Returns
 	// a valid model or false.
 	// 
@@ -259,7 +270,7 @@ var Collection = module.exports = AppObject.extend({
 	// 
 	// Loads the content of all of the models in the collection
 	// 
-	// @return AppObject
+	// @return promise
 	// 
 	load: function() {
 		var self = this;
@@ -287,50 +298,38 @@ var Collection = module.exports = AppObject.extend({
 	// 
 	// Dagger load implementation
 	// 
-	// @return AppObject
+	// @param {query} an object containing querystring data (NOTE: be careful
+	//                with defining custom filters here; you can change what
+	//                models are in the collection without any other notice)
+	// @return promise
 	// 
-	loadDagger: function() {
+	loadDagger: function(query) {
 		var self = this;
 		var ids = this.mapTo('id');
-		var filter = JSON.stringify({ _id: {$id: ids} });
+
+		query = query || { };
+		if (! query.hasOwnProperty('filter')) {
+			query.filter = JSON.stringify({
+				_id: { $in: ids }
+			});
+		}
 
 		return xhr.get(this.model.url(), {filter: filter})
-			.on('ready', this.emits('loaded'))
-			.on('success', function(req) {
-				_.each(req.json, function(data) {
-					self.find(data._id).unserialize(data);
-				});
-				req.emit('ready');
+			.then(function(req) {
+				self.unserialize(req.json);
+				return $.Deferred.resolve().promise();
 			});
 	},
 
 	// 
 	// Individual load implementation
 	// 
-	// @return AppObject
+	// @return promise
 	// 
 	loadStandard: function() {
-		var ee = new AppObject();
-
-		this.async()
-			.map(function(model, next) {
-				model.load()
-					.on('error', next)
-					.on('success', ee.reemit())
-					.on('ready', function(req) {
-						next(null, req);
-					});
-			})
-			.then(
-				function(reqs) {
-					ee.emit('ready', reqs);
-				},
-				function(req) {
-					ee.emit('error', req);
-				}
-			);
-
-		return ee;
+		return this.async().map(function(model, done) {
+			model.load().then(_.bind(done, null, null), done);
+		});
 	},
 
 	// 
@@ -353,33 +352,17 @@ var Collection = module.exports = AppObject.extend({
 		switch (cloak.config.bulkOperations) {
 			// Makes requests using dagger.js format list endpoints
 			case 'dagger':
-				
+				return this.saveDagger();
 			break;
 			
 			// Makes an individual request for each model
 			case 'standard':
-				var ee = new AppObject();
-
-				var reqs = [ ];
-				var waitingFor = this.len();
-				this.each(function(model) {
-					model.load()
-						.on('error', ee.reemit())
-						.on('success', ee.reemit())
-						.on('ready', function(req) {
-							reqs.push(req);
-							if (! --waitingFor) {
-								ee.emit('ready', reqs);
-							}
-						});
-				});
-
-				return ee;
+				return this.saveStandard();
 			break;
 			
 			// Makes requests using the loadCustom method
 			case 'custom':
-				return this.loadCustom.apply(this, arguments);
+				return this.loadCustom();
 			break;
 		}
 	},
@@ -440,7 +423,9 @@ var Collection = module.exports = AppObject.extend({
 	},
 
 	saveStandard: function() {
-		// 
+		return this.async().map(function(model, done) {
+			model.save().then(_.bind(done, null, null), done);
+		});
 	},
 
 	// 

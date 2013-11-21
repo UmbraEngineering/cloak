@@ -20,7 +20,10 @@ module.exports = _;
 
 // --------------------------------------------------------
 
+// 
 // Extend with new functionality
+// 
+
 _.mixin({
 	
 	// 

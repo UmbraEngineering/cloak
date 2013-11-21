@@ -43,6 +43,9 @@ exports.config = {
 	// Should repsonse data be loaded into the model after a save call?
 	loadSaveResponses: true,
 
+	// Should response data be loaded into the model after a patch call?
+	loadPatchResponses: false,
+
 	// Should delegate events be used by default?
 	delegateEvents: true,
 

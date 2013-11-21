@@ -4,11 +4,10 @@ var $      = require('jquery');
 var Class  = require('cloak/class');
 var _      = require('cloak/underscore');
 
-var Async = module.exports = Class.extend({
+var CollectionAsync = module.exports = Class.extend({
 
-	init: function(arr, scope) {
-		this.arr = arr;
-		this.scope = scope || null;
+	init: function(collection) {
+		this.collection = colllection;
 	},
 
 // --------------------------------------------------------
@@ -71,17 +70,18 @@ _.each(asyncMethods, function(method) {
 	Async.prototype[method] = function() {
 		var deferred = $.Deferred();
 		var args = _.toArray(arguments);
+		var collection = this.collection;
 
 		// Bind the iterator to the given parent scope
-		args[args.length - 1] = _.bind(args[args.length - 1], this.scope);
+		args[args.length - 1] = _.bind(args[args.length - 1], collection);
 
 		// Add the array and callback to the arguments
-		args.unshift(this.arr);
+		args.unshift(collection.models);
 		args.push(function(err, result) {
 			if (err) {
-				return deferred.reject(err);
+				return deferred.rejectWith(collection, err);
 			}
-			deferred.resolve(result);
+			deferred.resolveWith(collection, result);
 		});
 		
 		// Call the async method

@@ -1,13 +1,13 @@
 
-var cloak         = require('cloak');
-var xhr           = require('cloak/xhr');
-var Model         = require('cloak/model');
-var Async         = require('cloak/async');
-var AppObject     = require('cloak/app-object');
-var _             = require('cloak/underscore');
-var async         = require('async');
-var $             = require('jquery');
-var EventEmitter  = require('eventemitter2').EventEmitter2;
+var cloak            = require('cloak');
+var xhr              = require('cloak/xhr');
+var Model            = require('cloak/model');
+var AppObject        = require('cloak/app-object');
+var _                = require('cloak/underscore');
+var CollectionAsync  = require('cloak/collection-async');
+var async            = require('async');
+var $                = require('jquery');
+var EventEmitter     = require('eventemitter2').EventEmitter2;
 
 // 
 // Collection class
@@ -19,6 +19,13 @@ var Collection = module.exports = AppObject.extend({
 
 		// We store the collection's contents here
 		this.models = [ ];
+
+		// Create the async function object
+		this.async = new CollectionAsync(this);
+
+		if (typeof this.initialize === 'function') {
+			this.initialize.apply(this, arguments);
+		}
 	},
 
 	// 
@@ -69,21 +76,17 @@ var Collection = module.exports = AppObject.extend({
 		return false;
 	},
 
+// --------------------------------------------------------
+	
 	// 
-	// Return an async collection handler (see ./async.js)
+	// Clones the collection into a new one
 	// 
-	// @return Async
+	// @return Collection
 	// 
-	async: function() {
-		if (! this._async) {
-			this._async = new Async(this.models, this);
-		}
-
-		if (this._async.arr !== this.models) {
-			this._async.arr = this.models;
-		}
-
-		return this._async;
+	clone: function() {
+		var result = new this.constructor();
+		result.unserialize(this.serialize());
+		return result;
 	},
 
 // --------------------------------------------------------
@@ -211,6 +214,30 @@ var Collection = module.exports = AppObject.extend({
 		return this;
 	},
 
+	// 
+	// Filter the models contained in the collection, updating this collection
+	// instance while running
+	// 
+	// @param {func} the iterator function
+	// @return this
+	// 
+	filterInPlace: function(func) {
+		_.filterInPlace(this.models, func);
+		return this;
+	},
+
+	// 
+	// Reject the models contained in the collection, updating this collection
+	// instance while running
+	// 
+	// @param {func} the iterator function
+	// @return this
+	// 
+	rejectInPlace: function(func) {
+		_.rejectInPlace(this.models, func);
+		return this;
+	},
+
 // --------------------------------------------------------
 
 	// 
@@ -272,7 +299,7 @@ var Collection = module.exports = AppObject.extend({
 	// 
 	// @return promise
 	// 
-	load: function() {
+	load: function(query) {
 		var self = this;
 
 		this.emit('load');
@@ -326,16 +353,18 @@ var Collection = module.exports = AppObject.extend({
 	// 
 	// @return promise
 	// 
-	loadStandard: function() {
-		return this.async().map(function(model, done) {
-			model.load().then(_.bind(done, null, null), done);
+	loadStandard: function(query) {
+		return this.async.map(function(model, done) {
+			model.load(query).then(_.bind(done, null, null), done);
 		});
 	},
 
 	// 
 	// This method can be overriden to add custom load functionality
 	// 
-	loadCustom: function() {
+	// @return promise
+	// 
+	loadCustom: function(query) {
 		throw new Error('Collection::loadCustom must be overriden to be used');
 	},
 
@@ -343,6 +372,8 @@ var Collection = module.exports = AppObject.extend({
 	
 	// 
 	// Saves all of the models in the collection
+	// 
+	// @return promise
 	// 
 	save: function() {
 		var self = this;
@@ -367,63 +398,71 @@ var Collection = module.exports = AppObject.extend({
 		}
 	},
 
+	// 
+	// Save using the dagger implementation
+	// 
+	// @return promise
+	// 
 	saveDagger: function() {
-		var models = this.serialize({ deep: true });
-
-		// Find any models that don't yet exist on the server
-		var newModels = _.extract(models, function(model) {
-			return ! model[cloak.config.idKey];
+		var self = this;
+		var deferred = $.Deferred();
+		var models = this.clone();
+		var newModels = models.extract(function(model) {
+			return ! model.id();
 		});
 
 		async.series([
 			// First, we create any new models with POST requests...
 			function(next) {
-				if (! newModels.length) {
+				if (! newModels.len()) {
 					return next();
 				}
 
 				// Iterate through the new models, creating them as we go
-				async.each(newModels,
-					function(model, done) {
-						model.save()
-							.on('error', done)
-							.on('ready', function() {
-								done();
-							});
-					},
-					function(errReq) {
-						if (errReq) {
-							return next(errReq);
-						}
-
-						next();
-					});
+				newModels.async
+					.each(function(model, done) {
+						model.save().then(_.bind(done, null, null), done);
+					})
+					.then(_.bind(next, null, null), next);
 			},
 
 			// Next, we update any models that already exist
 			function(next) {
-				if (! models.length) {
+				if (! models.len()) {
 					return next();
 				}
 
 				// Make a bulk update call
-				xhr.put(this.model.url(), models)
-					.on('ready', this.emits('loaded'))
-					.on('success', function(req) {
-						_.each(req.json, function(data) {
-							self.find(data._id).unserialize(data);
-						});
-						req.emit('ready');
-					});
+				xhr.put(this.model.url(), models.serialize())
+					.then(
+						function() {
+							_.each(req.json, function(data) {
+								self.find(data._id).unserialize(data);
+							});
+							next();
+						},
+						next
+					);
 			}
 		],
-		function() {
-			// 
+		function(err) {
+			if (err) {
+				deferred.rejectWith(self, err);
+			}
+
+			deferred.resolveWith(self);
 		});
+
+		return deferred.promise();
 	},
 
+	// 
+	// Save using the standard method
+	// 
+	// @return promise
+	// 
 	saveStandard: function() {
-		return this.async().map(function(model, done) {
+		return this.async.map(function(model, done) {
 			model.save().then(_.bind(done, null, null), done);
 		});
 	},
@@ -431,7 +470,69 @@ var Collection = module.exports = AppObject.extend({
 	// 
 	// This method can be overriden to add custom save functionality
 	// 
+	// @return promise
+	// 
 	saveCustom: function() {
+		throw new Error('Collection::saveCustom must be overriden to be used');
+	},
+
+// --------------------------------------------------------
+	
+	// 
+	// 
+	// 
+	patch: function() {
+		// 
+	},
+
+	// 
+	// 
+	// 
+	patchDagger: function() {
+		// 
+	},
+
+	// 
+	// 
+	// 
+	patchStandard: function() {
+		// 
+	},
+
+	// 
+	// 
+	// 
+	patchCustom: function() {
+		// 
+	},
+
+// --------------------------------------------------------
+	
+	// 
+	// 
+	// 
+	del: function() {
+		// 
+	},
+
+	// 
+	// 
+	// 
+	delDagger: function() {
+		// 
+	},
+
+	// 
+	// 
+	// 
+	delStandard: function() {
+		// 
+	},
+
+	// 
+	// 
+	// 
+	delCustom: function() {
 		// 
 	}
 
@@ -449,7 +550,7 @@ var underscoreMethods = [
 	'every', 'all', 'some', 'any', 'invoke', 'max', 'min',
 	'toArray', 'size', 'first', 'head', 'take', 'initial', 'rest',
 	'tail', 'drop', 'last', 'without', 'difference', 'shuffle',
-	'isEmpty', 'chain'
+	'isEmpty', 'chain', 'extract'
 ];
 
 _.each(underscoreMethods, function(method) {

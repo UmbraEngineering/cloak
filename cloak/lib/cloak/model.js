@@ -23,6 +23,14 @@ var Model = module.exports = AppObject.extend({
 		// Initialize setters
 		this._setters = _.extend({ }, this.setters || { });
 
+		// Keep track of local changes
+		this._changedLocally = [ ];
+		this.on(cloak.event('change.*'), function(value, old, attr) {
+			if (! _.find(this._changedLocally, attr)) {
+				this._changedLocally.push(attr);
+			}
+		});
+
 		// Call any defined initialize method
 		if (typeof this.initialize === 'function') {
 			this.initialize.apply(this, arguments);
@@ -108,6 +116,35 @@ var Model = module.exports = AppObject.extend({
 		return false;
 	},
 
+	// 
+	// Clones the model into a new one
+	// 
+	// @return Model
+	// 
+	clone: function() {
+		var result = new this.constructor();
+		result.unserialize(this.serialize());
+		return result;
+	},
+
+	// 
+	// Get a list of all attributes changed locally
+	// 
+	// @return array
+	// 
+	localChanges: function() {
+		return this._changedLocally.slice();
+	},
+
+	// 
+	// Does this model contain local changes?
+	// 
+	// @return boolean
+	// 
+	hasLocalChanges: function() {
+		return !! this._changedLocally.length;
+	},
+
 // --------------------------------------------------------
 
 	// 
@@ -138,7 +175,7 @@ var Model = module.exports = AppObject.extend({
 		}
 		this.attributes[key] = value;
 		if (old !== value) {
-			this.emit(cloak.event('change.' + key), value, old);
+			this.emit(cloak.event('change.' + key), value, old, key);
 		}
 		return this;
 	},
@@ -239,6 +276,9 @@ var Model = module.exports = AppObject.extend({
 
 			attrs[key] = value;
 		});
+
+		// Empty out the changes list
+		this._changedLocally.length = 0;
 	},
 
 // --------------------------------------------------------
@@ -334,8 +374,11 @@ var Model = module.exports = AppObject.extend({
 			.on('success', function(req) {
 				self.emit('saved', method);
 
-				if (cloak.config.loadSaveResponses || req._meta.loadResponse) {
+				if (cloak.config.loadSaveResponses) {
 					return self.importReqBody(req, deferred);
+				} else {
+					// Empty out the changes list
+					self._changedLocally.length = 0;
 				}
 
 				deferred.resolveWith(self, req);
@@ -361,8 +404,16 @@ var Model = module.exports = AppObject.extend({
 			.on('success', function(req) {
 				self.emit('patched', keys);
 
-				if (cloak.config.loadSaveResponses || req._meta.loadResponse) {
+				if (cloak.config.loadPatchResponses) {
 					return self.importReqBody(req, deferred);
+				} else {
+					// Remove patched items from the changes list
+					_.each(keys, function(key) {
+						var index = _.indexOf(self._changedLocally, key);
+						if (index >= 0) {
+							self._changedLocally.splice(index, 1);
+						}
+					})
 				}
 
 				deferred.resolveWith(self, req);

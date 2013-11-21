@@ -52,8 +52,11 @@ exports.config = {
 	// Socket.io socket, if sockets are to be used
 	socket: null,
 
-	// How should collections be loaded (either "dagger", "individual", or "custom")
-	collectionRequestStyle: 'individual'
+	// How should bulk operations be performed (either "standard", "dagger", or "custom")
+	bulkOperations: 'standard',
+
+	// Maximum number of XHR/Socket requests allowed to be made at one time
+	maxRequests: 1
 };
 
 // 

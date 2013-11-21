@@ -5,6 +5,7 @@ var Model         = require('cloak/model');
 var Async         = require('cloak/async');
 var AppObject     = require('cloak/app-object');
 var _             = require('cloak/underscore');
+var async         = require('async');
 var $             = require('jquery');
 var EventEmitter  = require('eventemitter2').EventEmitter2;
 
@@ -265,15 +266,15 @@ var Collection = module.exports = AppObject.extend({
 
 		this.emit('load');
 
-		switch (cloak.config.collectionRequestStyle) {
+		switch (cloak.config.bulkOperations) {
 			// Makes requests using dagger.js format list endpoints
 			case 'dagger':
 				return this.loadDagger();
 			break;
 			
 			// Makes an individual request for each model
-			case 'individual':
-				return this.loadIndividual();
+			case 'standard':
+				return this.loadStandard();
 			break;
 			
 			// Makes requests using the loadCustom method
@@ -308,7 +309,7 @@ var Collection = module.exports = AppObject.extend({
 	// 
 	// @return AppObject
 	// 
-	loadIndividual: function() {
+	loadStandard: function() {
 		var ee = new AppObject();
 
 		this.async()
@@ -349,42 +350,14 @@ var Collection = module.exports = AppObject.extend({
 
 		this.emit('save');
 
-		switch (cloak.config.collectionRequestStyle) {
+		switch (cloak.config.bulkOperations) {
 			// Makes requests using dagger.js format list endpoints
 			case 'dagger':
-				var models = this.serialize({ deep true });
-
-				// Find any models that don't yet exist on the server
-				var newModels = _.extract(models, function(model) {
-					return ! model.id();
-				});
-
-				async.series([
-					// First, we create any new models with POST requests...
-					function(next) {
-						if (! newModels.length) {
-							return next();
-						}
-
-						// 
-					}
-				],
-				function() {
-					// 
-				});
-
-				return xhr.put(this.model.url(), models)
-					.on('ready', this.emits('loaded'))
-					.on('success', function(req) {
-						_.each(req.json, function(data) {
-							self.find(data._id).unserialize(data);
-						});
-						req.emit('ready');
-					});
+				
 			break;
 			
 			// Makes an individual request for each model
-			case 'individual':
+			case 'standard':
 				var ee = new AppObject();
 
 				var reqs = [ ];
@@ -409,6 +382,65 @@ var Collection = module.exports = AppObject.extend({
 				return this.loadCustom.apply(this, arguments);
 			break;
 		}
+	},
+
+	saveDagger: function() {
+		var models = this.serialize({ deep: true });
+
+		// Find any models that don't yet exist on the server
+		var newModels = _.extract(models, function(model) {
+			return ! model[cloak.config.idKey];
+		});
+
+		async.series([
+			// First, we create any new models with POST requests...
+			function(next) {
+				if (! newModels.length) {
+					return next();
+				}
+
+				// Iterate through the new models, creating them as we go
+				async.each(newModels,
+					function(model, done) {
+						model.save()
+							.on('error', done)
+							.on('ready', function() {
+								done();
+							});
+					},
+					function(errReq) {
+						if (errReq) {
+							return next(errReq);
+						}
+
+						next();
+					});
+			},
+
+			// Next, we update any models that already exist
+			function(next) {
+				if (! models.length) {
+					return next();
+				}
+
+				// Make a bulk update call
+				xhr.put(this.model.url(), models)
+					.on('ready', this.emits('loaded'))
+					.on('success', function(req) {
+						_.each(req.json, function(data) {
+							self.find(data._id).unserialize(data);
+						});
+						req.emit('ready');
+					});
+			}
+		],
+		function() {
+			// 
+		});
+	},
+
+	saveStandard: function() {
+		// 
 	},
 
 	// 

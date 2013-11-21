@@ -4,6 +4,7 @@ var xhr         = require('cloak/xhr');
 var AppObject   = require('cloak/app-object');
 var Collection  = require('cloak/collection');
 var _           = require('cloak/underscore');
+var $           = require('jquery');
 
 // 
 // Model class
@@ -289,25 +290,31 @@ var Model = module.exports = AppObject.extend({
 	// Perform a GET request and update the loaded data
 	// 
 	load: function(query) {
-		this.emit('load', query);
+		var self = this;
+		var deferred = $.Deferred();
+
+		this.emit('load');
 		
-		return xhr.get(this.reqUrl(), query)
-			.on('ready', this.emits('loaded'))
-			.on('success', _.bind(this.onLoadSuccess, this));
+		xhr.get(this.reqUrl(), query)
+			.on('error', _.bind(deferred.rejectWith, deferred, this));
+			.on('success', function(req) {
+				self.importReqBody(req, deferred);
+			});
+
+		return deferred.promise();
 	},
 
-	// 
-	// Runs after a successful .load() call
-	// 
-	onLoadSuccess: function(req) {
+	importReqBody: function(req, deferred) {
 		try {
 			this.unserialize(req.json);
 		} catch (err) {
-			return this.emit('error', err);
+			return deferred.rejectWith(self, req);
 		}
 
-		req.emit('ready', req);
-	},
+		this.emit('loaded');
+
+		deferred.resolveWith(this, req);
+	}
 
 // --------------------------------------------------------
 	
@@ -316,13 +323,25 @@ var Model = module.exports = AppObject.extend({
 	// or not the ID property is defined
 	// 
 	save: function() {
+		var self = this;
+		var deferred = $.Deferred();
 		var method = this.id() ? 'put' : 'post';
 
 		this.emit('save', method);
 
-		return xhr[method](this.reqUrl(), this.serialize())
-			.on('ready', this.emits('saved'))
-			.on('success', _.bind(this.onSaveSuccess, this));
+		xhr[method](this.reqUrl(), this.serialize())
+			.on('error', _.bind(deferred.rejectWith, deferred, this))
+			.on('success', function(req) {
+				self.emit('saved', method);
+
+				if (cloak.config.loadSaveResponses || req._meta.loadResponse) {
+					return self.importReqBody(req, deferred);
+				}
+
+				deferred.resolveWith(self, req);
+			});
+
+		return deferred.promise();
 	},
 
 	//
@@ -330,27 +349,27 @@ var Model = module.exports = AppObject.extend({
 	// a PATCH request
 	//
 	patch: function(arg1) {
+		var self = this;
+		var deferred = $.Deferred();
 		var keys = _.isArray(arg1) ? arg1 : _.toArray(arguments);
 		var data = _.pick.apply(_, [this.serialize()].concat(keys));
 
 		this.emit('patch', keys);
 
-		return xhr.patch(this.reqUrl(), data)
-			.on('ready', this.emits('patched', keys))
-			.on('success', _.bind(this.onSaveSuccess, this));
-	},
+		xhr.patch(this.reqUrl(), data)
+			.on('error', _.bind(deferred.rejectWith, deferred, this))
+			.on('success', function(req) {
+				self.emit('patched', keys);
 
-	// 
-	// Runs after a successful .save() or .patch() call
-	// 
-	onSaveSuccess: function(req) {
-		// Check for a loadResponse meta flag
-		if (cloak.config.loadSaveResponses || req._meta.loadResponse) {
-			return this.onLoadSuccess(req);
-		}
+				if (cloak.config.loadSaveResponses || req._meta.loadResponse) {
+					return self.importReqBody(req, deferred);
+				}
 
-		req.emit('ready', req);
-	},
+				deferred.resolveWith(self, req);
+			});
+
+		return deferred.promise();
+	}
 
 // --------------------------------------------------------
 	
@@ -358,26 +377,25 @@ var Model = module.exports = AppObject.extend({
 	// Delete the model from the server using a DELETE request
 	// 
 	del: function() {
+		var deferred = $.Deferred();
+
 		// Don't allow deleting without an ID to avoid accidental deletion
 		// of entire list routes
-		if (this.id()) {
+		if (! this.id()) {
+			deferred.rejectWith(this, new Error('Cannot make a DELETE request on a model with no ID'));
+		}
+
+		// Otherwise, go ahead with the delete, then teardown the model
+		else {
 			this.emit('delete');
-
-			return xhr.del(this.reqUrl())
+			xhr.del(this.reqUrl())
+				.on('error', _.bind(deferred.rejectWith, deferred, this))
 				.on('success', this.emits('deleted'))
-				.on('success', _.bind(this.onDelSuccess, this));
+				.on('success', _.bind(this.destroy, this))
+				.on('success', _.bind(deferred.resolveWith, deferred, this));
 		}
 
-		throw new Error('Cannot make a DELETE request on a model with no ID');
-	},
-
-	// 
-	// Runs after a successful .del() call
-	// 
-	onDelSuccess: function(req) {
-		if (this.destroy) {
-			this.destroy();
-		}
+		return deferred.promise();
 	},
 
 // --------------------------------------------------------

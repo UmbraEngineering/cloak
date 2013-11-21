@@ -3,7 +3,6 @@
 // XHR classes
 // 
 
-var Q          = require('q');
 var $          = require('jquery');
 var cloak      = require('cloak');
 var base64     = require('cloak/base64');
@@ -18,20 +17,22 @@ var Queue = exports.Queue = AppObject.extend({
 	init: function() {
 		this._super();
 		this.queue = [ ];
-		this.running = false;
+		this.running = 0;
 	},
 
 	next: function() {
 		var self = this;
 		setTimeout(function() {
-			if (! self.running && self.queue.length) {
-				self.running = self.queue.shift();
-				self.running.on('done', function() {
-					self.running = null;
+			if (self.running < cloak.config.maxRequests && self.queue.length) {
+				self.running++;
+
+				var req = self.queue.shift();
+				req.on('done', function() {
+					self.running--;
 					self.next();
 				});
-				self.emit('startRequest', {req: self.running});
-				self.running.start();
+				self.emit('startRequest', req);
+				req.start();
 			}
 		}, 0);
 	},
@@ -46,7 +47,7 @@ var Queue = exports.Queue = AppObject.extend({
 		}
 
 		this.queue.push(req);
-		this.emit('queue', {req: req});
+		this.emit('queue', req);
 		this.next();
 		return req;
 	},

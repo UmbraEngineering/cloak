@@ -59,7 +59,10 @@ exports.config = {
 	bulkOperations: 'standard',
 
 	// Maximum number of XHR/Socket requests allowed to be made at one time
-	maxRequests: 1
+	maxRequests: 1,
+
+	// Should models be removed from collections automatically when deleted?
+	removeFromCollectionOnDelete: true
 };
 
 // 

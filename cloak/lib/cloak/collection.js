@@ -89,6 +89,16 @@ var Collection = module.exports = AppObject.extend({
 		return result;
 	},
 
+	// 
+	// Empties out the collection (this in no way destroys the models manually)
+	// 
+	// @return this
+	// 
+	empty: function() {
+		this.models.length = 0;
+		return this;
+	},
+
 // --------------------------------------------------------
 	
 	// 
@@ -304,22 +314,11 @@ var Collection = module.exports = AppObject.extend({
 
 		this.emit('load');
 
-		switch (cloak.config.bulkOperations) {
-			// Makes requests using dagger.js format list endpoints
-			case 'dagger':
-				return this.loadDagger();
-			break;
-			
-			// Makes an individual request for each model
-			case 'standard':
-				return this.loadStandard();
-			break;
-			
-			// Makes requests using the loadCustom method
-			case 'custom':
-				return this.loadCustom();
-			break;
-		}
+		// Get the correct method to call (eg. "standard" -> "loadStandard")
+		var method = cloak.config.bulkOperations;
+		method = 'load' + method.charAt(0).toUpperCase() + method.slice(1);
+
+		return this[method](query).then(this.emits('loaded'));
 	},
 
 	// 
@@ -344,7 +343,10 @@ var Collection = module.exports = AppObject.extend({
 		return xhr.get(this.model.url(), {filter: filter})
 			.then(function(req) {
 				self.unserialize(req.json);
-				return $.Deferred.resolve().promise();
+				self.each(function(model) {
+					model.emit('loaded');
+				});
+				return $.Deferred.resolveWith(self, req).promise();
 			});
 	},
 
@@ -380,22 +382,11 @@ var Collection = module.exports = AppObject.extend({
 
 		this.emit('save');
 
-		switch (cloak.config.bulkOperations) {
-			// Makes requests using dagger.js format list endpoints
-			case 'dagger':
-				return this.saveDagger();
-			break;
-			
-			// Makes an individual request for each model
-			case 'standard':
-				return this.saveStandard();
-			break;
-			
-			// Makes requests using the loadCustom method
-			case 'custom':
-				return this.loadCustom();
-			break;
-		}
+		// Get the correct method to call (eg. "standard" -> "saveStandard")
+		var method = cloak.config.bulkOperations;
+		method = 'save' + method.charAt(0).toUpperCase() + method.slice(1);
+
+		return this[method]().then(this.emits('saved'));
 	},
 
 	// 
@@ -437,7 +428,9 @@ var Collection = module.exports = AppObject.extend({
 					.then(
 						function() {
 							_.each(req.json, function(data) {
-								self.find(data._id).unserialize(data);
+								var model = self.find(data._id);
+								model.unserialize(data);
+								model.emit('saved', 'put');
 							});
 							next();
 						},
@@ -479,61 +472,161 @@ var Collection = module.exports = AppObject.extend({
 // --------------------------------------------------------
 	
 	// 
+	// Saves a given set of attributes for all of the models in the
+	// collection using a PATCH request. If the keys parameter is not
+	// given, each model will be checked for locally changed attributes
 	// 
+	// @param {keys...} which keys should be sent to the server
+	// @return promise
 	// 
-	patch: function() {
-		// 
+	patch: function(arg1) {
+		var self = this;
+		var keys = _.isArray(arg1) ? arg1 : _.toArray(arguments);
+
+		// Get the attributes list for each model
+		keys = keys.length
+			? this.map(function() { return keys; })
+			: this.mapTo('localChanges');
+
+		this.emit('patch');
+
+		// Get the correct method to call (eg. "standard" -> "patchStandard")
+		var method = cloak.config.bulkOperations;
+		method = 'patch' + method.charAt(0).toUpperCase() + method.slice(1);
+
+		return this[method](keys).then(this.emits('patched'));
 	},
 
 	// 
+	// Patch using the dagger.js implementation
 	// 
+	// @param {keys} the attributes to patch
+	// @return promise
 	// 
-	patchDagger: function() {
-		// 
+	patchDagger: function(keys) {
+		// Iterate through the models and get the info we need
+		var data = this.map(function(model, index) {
+			return model.serialize({ attrs: keys[index] });
+		});
+
+		// Any object containing only an ID is useless..
+		data = _.filter(data, function(model) {
+			return (_.keys(model).length >= 2);
+		});
+
+		// Send the request
+		return xhr.patch(this.model.url(), data)
+			.then(function(req) {
+				self.unserialize(req.json);
+				_.each(data, functon(obj) {
+					self.find(obj).emit('loaded');
+				});
+				return $.Deferred().resolve(req).promise();
+			});
 	},
 
 	// 
+	// Patch using the standard implementation
 	// 
+	// @param {keys} the attributes to patch
+	// @return promise
 	// 
-	patchStandard: function() {
-		// 
+	patchStandard: function(keys) {
+		return this.async.eachSeries(function(model, done) {
+			var data = model.serialize({ attrs: keys.shift() });
+
+			model.patch(keys).then(
+				function(req) {
+					model.unserialize(req.json);
+					done();
+				},
+				done);
+		});
 	},
 
 	// 
+	// Patch using a custom implementation
 	// 
+	// @param {keys} the attributes to patch
+	// @return promise
 	// 
-	patchCustom: function() {
-		// 
+	patchCustom: function(keys) {
+		throw new Error('Collection::patchCustom must be overriden to be used');
 	},
 
 // --------------------------------------------------------
 	
 	// 
+	// Delete all of the models in the collection (this does NOT destroy the collection itself)
 	// 
+	// @return promise
 	// 
 	del: function() {
-		// 
+		this.emit('delete');
+
+		// Get the correct method to call (eg. "standard" -> "delStandard")
+		var method = cloak.config.bulkOperations;
+		method = 'del' + method.charAt(0).toUpperCase() + method.slice(1);
+		
+		return this[method]().then(this.emits('deleted'));
 	},
 
 	// 
+	// Delete using the dagger.js implementation
 	// 
+	// @return promise
 	// 
 	delDagger: function() {
-		// 
+		return xhr.del(this.model.url(), this.mapTo('id'))
+			.then(_.bind(this.empty, this));
 	},
 
 	// 
+	// Delete using the standard implementation
 	// 
+	// @return promise
 	// 
 	delStandard: function() {
-		// 
+		return this.async
+			.each(function(model, done) {
+				model.del().then(_.bind(done, null, null), done);
+			})
+			.then(_.bind(this.empty, this));
 	},
 
 	// 
+	// Delete using a custom implementation
 	// 
+	// @return promise
 	// 
 	delCustom: function() {
-		// 
+		throw new Error('Collection::delCustom must be overriden to be used');
+	},
+
+// --------------------------------------------------------
+	
+	// 
+	// Destroy the collection and all of the models contained in it
+	// 
+	// @return void
+	// 
+	destroy: function() {
+		this.emit('destroy');
+
+		// Call the teardown method if one is given
+		if (this.teardown) {
+			this.teardown();
+		}
+
+		// Destroy all of the models
+		this.mapTo('destroy');
+
+		// Null out all properties
+		for (var i in this) {
+			if (this.hasOwnProperty(i)) {
+				this[i] = null;
+			}
+		}
 	}
 
 });

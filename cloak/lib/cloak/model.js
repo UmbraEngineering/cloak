@@ -213,16 +213,20 @@ var Model = module.exports = AppObject.extend({
 	// 
 	// Returns a simple Object structure representing the model and it's children
 	// 
-	serialize: function(deep) {
+	serialize: function(opts) {
 		var self = this;
 		var result = { };
 
+		opts = opts || { };
+
 		_.each(_.keys(self.attributes), function(key) {
-			var value = self.attributes[key];
-			if (value instanceof Model || value instanceof Collection) {
-				value = self.serializeChild(value, deep);
+			if (! opts.attrs || key === cloak.config.idKey || _.indexOf(opts.attrs, key) >= 0) {
+				var value = self.attributes[key];
+				if (value instanceof Model || value instanceof Collection) {
+					value = self.serializeChild(value, opts.deep);
+				}
+				result[key] = value;
 			}
-			result[key] = value;
 		});
 
 		return result;
@@ -455,9 +459,14 @@ var Model = module.exports = AppObject.extend({
 	// Prepare a no longer needed model instance for garbage collection
 	// 
 	destroy: function() {
+		this.emit('destroy');
+
+		// Call the teardown method if one is given
 		if (this.teardown) {
 			this.teardown();
 		}
+
+		// Null out all properties
 		for (var i in this) {
 			if (this.hasOwnProperty(this)) {
 				this[i] = null;

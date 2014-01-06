@@ -1,12 +1,21 @@
 # cloak
 
-_Version 0.2.5-dev_
+_Version 1.0.0_
 
-Cloak.js is a client-side MVC web application framework. Inspired greatly by [Backbone.js](http://backbonejs.org/), Cloak.js has many similar features and should be very easy to learn for anyone familiar with Backbone.js.
+Cloak.js is a client-side MVC web application framework. Inspired greatly by [Backbone.js](http://backbonejs.org/), Cloak.js has many similar features and should be very easy to learn for anyone familiar with Backbone.js. Cloak.js is designed around the CommonJS module API.
 
-Cloak.js is still be developed and improved. The following are features that are still to be added before the v1.0 release.
+```javascript
+var View = require('cloak/view');
 
-* Integration with Cloak's sister project Dagger.js - A Node.js API server framework - with seemless socket communication between Cloak's models and your data on the server with Dagger available out of the box.
-* Cleaned up and generally improved `Collection` class.
-* More complete schema support for `Model`.
-* More complete `Router` class with "controller" like structure.
+var Heading = module.exports = View.extend({
+
+	template: '<h1>{{ text }}</h1>',
+	
+	draw: function(text) {
+		this.$elem.html(this.render({
+			text: text
+		}));
+	}
+
+});
+```

@@ -31,6 +31,8 @@ describe('Class', function() {
 		it('should create a new subclass', function() {
 			expect(typeof Sub).toBe('function');
 			expect(sub instanceof Sub).toBeTruthy();
+			expect(sub.constructor).toBe(Sub);
+			expect(subSub.constructor).toBe(SubSub);
 		});
 
 		it('should set the methods and properties to the new subclass', function() {
@@ -48,8 +50,8 @@ describe('Class', function() {
 		});
 
 		it('should set up correct inheritence for the subclass', function() {
-			expect(Sub.prototype.constructor).toBe(Class);
-			expect(SubSub.prototype.constructor).toBe(Sub);
+			expect(Sub.prototype.constructor).toBe(Sub);
+			expect(SubSub.prototype.constructor).toBe(SubSub);
 			expect(subSub instanceof Sub).toBeTruthy();
 			expect(subSub instanceof Class).toBeTruthy();
 		});

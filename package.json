@@ -1,0 +1,30 @@
+{
+  "name": "cloak",
+  "scripts": {
+    "test": "node_modules/.bin/karma"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/UmbraEngineering/cloak"
+  },
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/UmbraEngineering/cloak/issues"
+  },
+  "homepage": "https://github.com/UmbraEngineering/cloak",
+  "dependencies": {
+    "karma-jasmine": "~0.1.5",
+    "karma-script-launcher": "~0.1.0",
+    "karma-chrome-launcher": "~0.1.2",
+    "karma-html2js-preprocessor": "~0.1.0",
+    "karma-firefox-launcher": "~0.1.3",
+    "karma-coffee-preprocessor": "~0.1.2",
+    "requirejs": "~2.1.10",
+    "karma-requirejs": "~0.2.1",
+    "karma-phantomjs-launcher": "~0.1.1",
+    "karma": "~0.10.9",
+    "grunt-contrib-jshint": "~0.8.0",
+    "grunt": "~0.4.2",
+    "grunt-contrib-concat": "~0.3.0"
+  }
+}

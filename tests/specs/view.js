@@ -104,4 +104,20 @@ describe('View', function() {
 		});
 	});
 
+// -------------------------------------------------------------
+
+	describe('View::$', function() {
+		it('should query for elements inside of the view element', function() {
+			var TestView = View.extend({ });
+			var view = new TestView();
+
+			view.$elem.html('<div></div><div class="foo"><div></div></div><p></p>');
+
+			expect(view.$('div').length).toBe(3);
+			expect(view.$('.foo').length).toBe(1);
+			expect(view.$('p').length).toBe(1);
+			expect(view.$('div div').length).toBe(1);
+		});
+	});
+
 });

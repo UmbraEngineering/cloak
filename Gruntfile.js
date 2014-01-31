@@ -4,9 +4,11 @@ var fs        = require('fs');
 var commonjs  = require('common.js');
 
 var libPath = './lib';
-var buildPath = './tests/compiled';
+var testPath = './tests/compiled';
+var buildPath = './build';
 
 module.exports = function(grunt) {
+	grunt.loadNpmTasks('grunt-karma');
 	grunt.loadNpmTasks('grunt-contrib-concat');
 	grunt.loadNpmTasks('grunt-contrib-jshint');
 
@@ -48,7 +50,11 @@ module.exports = function(grunt) {
 		},
 		
 		commonjs: {
-			all: {
+			test: {
+				src: libPath,
+				dest: testPath
+			},
+			build: {
 				src: libPath,
 				dest: buildPath
 			}
@@ -59,7 +65,17 @@ module.exports = function(grunt) {
 		// 		src: [buildPath + '/js/lib/**/*.js'],
 		// 		dest: buildPath + '/js/lib.js'
 		// 	}
-		// }
+		// },
+
+		karma: {
+			unit: {
+				configFile: 'karma.conf.js',
+				colors: false,
+				singleRun: true,
+				browsers: ['PhantomJS'],
+				logLevel: 'WARN'
+			}
+		}
 
 	});
 
@@ -81,6 +97,6 @@ module.exports = function(grunt) {
 
 // --------------------------------------------------------
 
-	grunt.registerTask('default', ['jshint', 'commonjs']);//, 'concat']);
+	grunt.registerTask('default', ['jshint', 'commonjs:test', 'karma:unit']);//, 'concat']);
 
 };

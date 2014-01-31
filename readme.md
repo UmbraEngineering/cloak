@@ -1,3 +1,4 @@
+
 # cloak
 
 _Version 1.0.0_
@@ -18,4 +19,33 @@ var Heading = module.exports = View.extend({
 	}
 
 });
+```
+
+
+
+## Running the tests
+
+#### Install the needed tools
+
+```bash
+$ npm install
+$ npm install -g karma grunt-cli
+```
+
+#### Compile a copy of the code to test against
+
+```bash
+$ grunt commonjs:test
+```
+
+#### Start karma server
+
+```bash
+$ karma run
+```
+
+ -or-
+
+```bash
+$ grunt karma
 ```

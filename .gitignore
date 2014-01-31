@@ -1,2 +1,5 @@
 node_modules
 tests/compiled
+build
+.sublime*
+*.sublime*

@@ -68,13 +68,17 @@ module.exports = function(grunt) {
 		// },
 
 		karma: {
-			unit: {
+			options: {
 				configFile: 'karma.conf.js',
-				colors: false,
 				singleRun: true,
 				browsers: ['PhantomJS'],
+				reporters: 'dots'
+			},
+			continuous: {
+				colors: false,
 				logLevel: 'WARN'
-			}
+			},
+			unit: { }
 		}
 
 	});
@@ -97,6 +101,6 @@ module.exports = function(grunt) {
 
 // --------------------------------------------------------
 
-	grunt.registerTask('default', ['jshint', 'commonjs:test', 'karma:unit']);//, 'concat']);
+	grunt.registerTask('default', ['jshint', 'commonjs:test', 'karma:continuous']);//, 'concat']);
 
 };

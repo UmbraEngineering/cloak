@@ -118,11 +118,26 @@ describe('AppObject', function() {
 // -------------------------------------------------------------
 
 	describe('AppObject::reemit', function() {
-		var obj1, obj2;
+		var obj1, obj2, emitEvent, eventCalled;
 
 		beforeEach(function() {
+			eventCalled = false;
 			obj1 = new AppObject();
 			obj2 = new AppObject();
+
+			ensureEventEmits = function() {
+				runs(function() {
+					obj1.emit('foo');
+				});
+
+				waitsFor(function() {
+					return eventCalled;
+				});
+
+				runs(function() {
+					expect(eventCalled).toBeTruthy();
+				});
+			};
 		});
 
 		it('should return a function', function() {
@@ -130,23 +145,40 @@ describe('AppObject', function() {
 		});
 
 		it('should reemit the calling event on the object', function() {
-			var eventCalled = false;
-
 			obj1.on('foo', obj2.reemit());
 			obj2.on('foo', function() {
 				eventCalled = true;
 			});
 
-			runs(function() {
-				obj1.emit('foo');
+			ensureEventEmits();
+		});
+
+		describe('when a param is given', function() {
+			it('should change the emitted event', function() {
+				obj1.on('foo', obj2.reemit('bar'));
+				obj2.on('bar', function() {
+					eventCalled = true;
+				});
+
+				ensureEventEmits();
 			});
 
-			waitsFor(function() {
-				return eventCalled;
+			it('should append to the event if the param begins with a dot "."', function() {
+				obj1.on('foo', obj2.reemit('.bar'));
+				obj2.on('foo.bar', function() {
+					eventCalled = true;
+				});
+
+				ensureEventEmits();
 			});
 
-			runs(function() {
-				expect(eventCalled).toBeTruthy();
+			it('should prepend to the event if the param ends with a dot "."', function() {
+				obj1.on('foo', obj2.reemit('bar.'));
+				obj2.on('bar.foo', function() {
+					eventCalled = true;
+				});
+
+				ensureEventEmits();
 			});
 		});
 	});

@@ -1,5 +1,6 @@
 
 var $           = require('jquery');
+var cloak       = require('cloak');
 var View        = require('cloak/view');
 var AppObject   = require('cloak/app-object');
 var handlebars  = require('handlebars');
@@ -12,72 +13,49 @@ describe('View', function() {
 
 // -------------------------------------------------------------
 
+	describe('View.onExtend', function() {
+		var SubView, SubSubView;
+
+		function defineViews() {
+			SubView = View.extend({
+				name: 'SubView',
+				events: {
+					'click a': 'foo'
+				},
+				foo: function() { /* noop */ }
+			});
+
+			SubSubView = SubView.extend({
+				name: 'SubSubView',
+				events: {
+					'mouseover @': 'bar'
+				},
+				bar: function() { /* noop */ }
+			});
+		}
+
+		it('should not inherit parent events if {cloak.config.inheritEvents} is false', function() {
+			cloak.config.inheritEvents = false;
+			defineViews();
+
+			var events = SubSubView.prototype.events;
+			expect(events['click a']).not.toBeDefined();
+			expect(events['mouseover @']).toBe('bar');
+		});
+
+		it('should inherit parent events if {cloak.config.inheritEvents} is true', function() {
+			cloak.config.inheritEvents = true;
+			defineViews();
+			
+			var events = SubSubView.prototype.events;
+			expect(events['click a']).toBe('foo');
+			expect(events['mouseover @']).toBe('bar');
+		});
+	});
+
+// -------------------------------------------------------------
+
 	describe('View::init', function() {
-		it('should select an existing element if an {elem} property is given', function() {
-			var TestView = View.extend({
-				elem: 'body'
-			});
-
-			var view = new TestView();
-
-			expect(view.$elem.length).toBe(1);
-			expect(view.$elem[0]).toBe(document.body);
-		});
-
-		it('should create a new view element with the given tag name if a {tagName} property is given', function() {
-			var TestView = View.extend({
-				tagName: 'p'
-			});
-
-			var view = new TestView();
-
-			expect(view.$elem.length).toBe(1);
-			expect(view.$elem.prop('tagName')).toBe('P');
-		});
-
-		it('should create a new div element if no other element is specified', function() {
-			var TestView = View.extend({ });
-
-			var view = new TestView();
-
-			expect(view.$elem.length).toBe(1);
-			expect(view.$elem.prop('tagName')).toBe('DIV');
-		});
-
-		it('should set the class name of the element if a {className} property is given', function() {
-			var TestView = View.extend({
-				className: 'test-class'
-			});
-
-			var view = new TestView();
-
-			expect(view.$elem.hasClass('test-class')).toBeTruthy();
-		});
-
-		it('should set the id of the element if an {id} property is given', function() {
-			var TestView = View.extend({
-				id: 'test-id'
-			});
-
-			var view = new TestView();
-
-			expect(view.$elem.attr('id')).toBeTruthy();
-		});
-
-		it('should set any attributes given to the element if an {attributes} hash property is given', function() {
-			var TestView = View.extend({
-				attributes: {
-					role: 'presentation',
-					'data-foo': 'bar'
-				}
-			});
-
-			var view = new TestView();
-
-			expect(view.$elem.attr('role')).toBe('presentation');
-			expect(view.$elem.attr('data-foo')).toBe('bar');
-		});
-
 		it('should call the {initialize} method if one is given', function() {
 			var TestView = View.extend({
 				initialize: function() { /* noop */ }
@@ -88,6 +66,73 @@ describe('View', function() {
 			var view = new TestView();
 
 			expect(view.initialize).toHaveBeenCalled();
+		});
+
+		describe('element creation', function() {
+			it('should select an existing element if an {elem} property is given', function() {
+				var TestView = View.extend({
+					elem: 'body'
+				});
+
+				var view = new TestView();
+
+				expect(view.$elem.length).toBe(1);
+				expect(view.$elem[0]).toBe(document.body);
+			});
+
+			it('should create a new view element with the given tag name if a {tagName} property is given', function() {
+				var TestView = View.extend({
+					tagName: 'p'
+				});
+
+				var view = new TestView();
+
+				expect(view.$elem.length).toBe(1);
+				expect(view.$elem.prop('tagName')).toBe('P');
+			});
+
+			it('should create a new div element if no other element is specified', function() {
+				var TestView = View.extend({ });
+
+				var view = new TestView();
+
+				expect(view.$elem.length).toBe(1);
+				expect(view.$elem.prop('tagName')).toBe('DIV');
+			});
+
+			it('should set the class name of the element if a {className} property is given', function() {
+				var TestView = View.extend({
+					className: 'test-class'
+				});
+
+				var view = new TestView();
+
+				expect(view.$elem.hasClass('test-class')).toBeTruthy();
+			});
+
+			it('should set the id of the element if an {id} property is given', function() {
+				var TestView = View.extend({
+					id: 'test-id'
+				});
+
+				var view = new TestView();
+
+				expect(view.$elem.attr('id')).toBeTruthy();
+			});
+
+			it('should set any attributes given to the element if an {attributes} hash property is given', function() {
+				var TestView = View.extend({
+					attributes: {
+						role: 'presentation',
+						'data-foo': 'bar'
+					}
+				});
+
+				var view = new TestView();
+
+				expect(view.$elem.attr('role')).toBe('presentation');
+				expect(view.$elem.attr('data-foo')).toBe('bar');
+			});
 		});
 	});
 
@@ -208,6 +253,82 @@ describe('View', function() {
 			}
 			expect(caught instanceof TypeError).toBeTruthy();
 		});
+	});
+
+// -------------------------------------------------------------
+
+	describe('View::bindEvents', function() {
+		beforeEach(function() {
+			TestView = View.extend({
+				events: {
+					'click a': 'foo'
+				},
+				foo: function() { /* noop */ }
+			});
+
+			view = new TestView();
+
+			spyOn(view, '_bindEvent');
+		});
+	});
+
+// -------------------------------------------------------------
+
+	describe('View::_bindEvent', function() {
+		// 
+	});
+
+// -------------------------------------------------------------
+
+	describe('View::unbindEvents', function() {
+		// 
+	});
+
+// -------------------------------------------------------------
+
+	describe('View::_unbindEvent', function() {
+		// 
+	});
+
+// -------------------------------------------------------------
+
+	describe('View::remove', function() {
+		var TestView, view;
+
+		beforeEach(function() {
+			TestView = View.extend({
+				events: { }
+			});
+
+			view = new TestView();
+		});
+
+		it('should emit a remove event', function() {
+			var spy = jasmine.createSpy();
+			
+			runs(function() {
+				view.on('remove', spy);
+				view.remove();
+			});
+			waitsFor(function() {
+				return spy.calls.length;
+			});
+			runs(function() {
+				expect(spy).toHaveBeenCalled();
+			});
+		});
+
+		it('should remove view.$elem from the DOM', function() {
+			spyOn(view.$elem, 'remove');
+			view.remove();
+			expect(view.$elem.remove).toHaveBeenCalled();
+		});
+
+		it('should unbind any events', function() {
+			spyOn(view, 'unbindEvents');
+			view.remove();
+			expect(view.unbindEvents).toHaveBeenCalled();
+		})
 	});
 
 });

@@ -261,14 +261,59 @@ describe('View', function() {
 		beforeEach(function() {
 			TestView = View.extend({
 				events: {
-					'click a': 'foo'
+					'click a': 'foo',
+					'click div': 'bar'
 				},
-				foo: function() { /* noop */ }
+				foo: function() { /* noop */ },
+				bar: function() { /* noop */ }
 			});
 
 			view = new TestView();
 
 			spyOn(view, '_bindEvent');
+		});
+
+		it('should do nothing if the view has no events', function() {
+			view.events = null;
+			view.bindEvents();
+
+			expect(view._bindEvent).not.toHaveBeenCalled();
+		});
+
+		it('should call View::_bindEvent for each event to bind', function() {
+			view.bindEvents();
+
+			expect(view._bindEvent.calls.length).toBe(2);
+		});
+
+		describe('View::_bindEvent delegate param', function() {
+			it('should be true if view.events._delegate is true', function() {
+				view.events._delegate = true;
+				view.bindEvents();
+
+				expect(view._bindEvent).toHaveBeenCalledWith(true, jasmine.any(String), jasmine.any(String), jasmine.any(Object));
+			});
+
+			it('should be false if view.events._delegate is false', function() {
+				view.events._delegate = false;
+				view.bindEvents();
+
+				expect(view._bindEvent).toHaveBeenCalledWith(false, jasmine.any(String), jasmine.any(String), jasmine.any(Object));
+			});
+
+			it('should be true if view.events._delegate is undefined and cloak.config.delegateEvents is true', function() {
+				cloak.config.delegateEvents = true;
+				view.bindEvents();
+
+				expect(view._bindEvent).toHaveBeenCalledWith(true, jasmine.any(String), jasmine.any(String), jasmine.any(Object));
+			});
+
+			it('should be false if view.events._delegate is undefined and cloak.config.delegateEvents is false', function() {
+				cloak.config.delegateEvents = false;
+				view.bindEvents();
+
+				expect(view._bindEvent).toHaveBeenCalledWith(false, jasmine.any(String), jasmine.any(String), jasmine.any(Object));
+			});
 		});
 	});
 

@@ -1,6 +1,8 @@
 
-var View       = require('cloak/view');
-var AppObject  = require('cloak/app-object');
+var $           = require('jquery');
+var View        = require('cloak/view');
+var AppObject   = require('cloak/app-object');
+var handlebars  = require('handlebars');
 
 describe('View', function() {
 
@@ -117,6 +119,94 @@ describe('View', function() {
 			expect(view.$('.foo').length).toBe(1);
 			expect(view.$('p').length).toBe(1);
 			expect(view.$('div div').length).toBe(1);
+		});
+	});
+
+// -------------------------------------------------------------
+
+	describe('View::render', function() {
+		var TestView, view;
+
+		beforeEach(function() {
+			TestView = View.extend({
+				template: '<h1>{{ text }}</h1>',
+				otherTemplate: '<h2>{{ text }}</h2>'
+			});
+			
+			view = new TestView();
+
+			if (handlebars.compile) {
+				spyOn(handlebars, 'compile').andCallThrough();
+			}
+			if (handlebars.template) {
+				spyOn(handlebars, 'template').andCallThrough();
+			}
+		});
+
+		describe('the render event emitted by the method', function() {
+			var onrender, callRender;
+
+			beforeEach(function() {
+				view.on('render', onrender = jasmine.createSpy());
+				callRender = function(template, callback) {
+					runs(function() {
+						view.render({ foo: 'bar' }, template);
+					});
+					waitsFor(function() {
+						return onrender.calls.length;
+					});
+					runs(callback);
+				};
+			});
+
+			it('should emit a render event on the view', function() {
+				callRender('otherTemplate', function() {
+					expect(onrender).toHaveBeenCalled();
+				});
+			});
+
+			it('should call the event function with the view scope', function() {
+				callRender('otherTemplate', function() {
+					expect(onrender.calls[onrender.calls.length - 1].object).toBe(view);
+				});
+			});
+
+			it('should pass in the data object with the view uuid', function() {
+				callRender('otherTemplate', function() {
+					var call = onrender.calls[onrender.calls.length - 1];
+
+					expect(call.args[0].foo).toBe('bar');
+					expect(call.args[0]._uuid).toBe(view._uuid);
+				});
+			});
+
+			it('should pass in the template property', function() {
+				callRender('otherTemplate', function() {
+					expect(onrender.calls[onrender.calls.length - 1].args[1]).toBe('otherTemplate');
+				});
+			});
+		});
+
+		it('should render the given template', function() {
+			var elem = $(view.render({ text: 'foo' }, 'otherTemplate'));
+			expect(elem.prop('tagName')).toBe('H2');
+			expect(elem.html()).toBe('foo');
+		});
+
+		it('should default to the "template" property', function() {
+			var elem = $(view.render({ text: 'bar' }));
+			expect(elem.prop('tagName')).toBe('H1');
+			expect(elem.html()).toBe('bar');
+		});
+
+		it('should throw an error if there is no template', function() {
+			var caught;
+			try {
+				view.render({ }, 'noSuchTemplate');
+			} catch (err) {
+				caught = err;
+			}
+			expect(caught instanceof TypeError).toBeTruthy();
 		});
 	});
 

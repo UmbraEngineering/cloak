@@ -326,13 +326,96 @@ describe('View', function() {
 // -------------------------------------------------------------
 
 	describe('View::unbindEvents', function() {
-		// 
+		var TestView, view;
+
+		beforeEach(function() {
+			TestView = View.extend({
+				initialize: function() {
+					this._boundEvents.push('BOUND1', 'BOUND2', 'BOUND3');
+				}
+			});
+
+			view = new TestView();
+
+			spyOn(view, '_unbindEvent');
+		});
+
+		it('should call View::_unbindEvent for each entry in View::_boundEvents', function() {
+			view.unbindEvents();
+
+			expect(view._unbindEvent).toHaveBeenCalledWith('BOUND1', 0, jasmine.any(Array));
+			expect(view._unbindEvent).toHaveBeenCalledWith('BOUND2', 1, jasmine.any(Array));
+			expect(view._unbindEvent).toHaveBeenCalledWith('BOUND3', 2, jasmine.any(Array));
+		});
+
+		it('should use the given events parameter if given instead of View::_boundEvents', function() {
+			view.unbindEvents(['GIVEN1', 'GIVEN2', 'GIVEN3']);
+
+			expect(view._unbindEvent).toHaveBeenCalledWith('GIVEN1', 0, jasmine.any(Array));
+			expect(view._unbindEvent).toHaveBeenCalledWith('GIVEN2', 1, jasmine.any(Array));
+			expect(view._unbindEvent).toHaveBeenCalledWith('GIVEN3', 2, jasmine.any(Array));
+		});
 	});
 
 // -------------------------------------------------------------
 
 	describe('View::_unbindEvent', function() {
-		// 
+		var TestView;
+		var view;
+
+		beforeEach(function() {
+			TestView = View.extend({
+				// 
+			});
+
+			view = new TestView();
+
+			spyOn(view.$elem, 'off');
+			spyOn(cloak.$doc, 'off');
+		});
+
+		it('should unbind from the view element if the query value is "@"', function() {
+			view._unbindEvent({
+				query: '@',
+				event: 'foo'
+			});
+
+			expect(view.$elem.off).toHaveBeenCalledWith('foo');
+		});
+
+		it('should unbind from the document if the query is blank', function() {
+			view._unbindEvent({
+				query: '',
+				event: 'foo'
+			});
+
+			expect(cloak.$doc.off).toHaveBeenCalledWith('foo');
+		});
+
+		it('should unbind a delegate from the view element if using delegate events', function() {
+			view._unbindEvent({
+				query: 'div',
+				event: 'foo',
+				delegate: true
+			});
+
+			expect(view.$elem.off).toHaveBeenCalledWith('foo', 'div');
+		});
+
+		it('should query for the event element and unbind from there if not using delegate events', function() {
+			var elemSpy = {
+				off: jasmine.createSpy()
+			};
+			spyOn(view, '$').andReturn(elemSpy);
+
+			view._unbindEvent({
+				query: 'div',
+				event: 'foo'
+			});
+
+			expect(view.$).toHaveBeenCalledWith('div');
+			expect(elemSpy.off).toHaveBeenCalledWith('foo');
+		});
 	});
 
 // -------------------------------------------------------------

@@ -258,6 +258,8 @@ describe('View', function() {
 // -------------------------------------------------------------
 
 	describe('View::bindEvents', function() {
+		var TestView, view;
+
 		beforeEach(function() {
 			TestView = View.extend({
 				events: {
@@ -320,7 +322,98 @@ describe('View', function() {
 // -------------------------------------------------------------
 
 	describe('View::_bindEvent', function() {
-		// 
+		var TestView, view, queried, eventNS;
+		
+		beforeEach(function() {
+			TestView = View.extend({
+				foo: function() { /* noop */ }
+			});
+
+			view = new TestView();
+			eventNS = '_viewEvents.' + view._uuid;
+
+			spyOn(view.$elem, 'on');
+			spyOn(view.$elem, 'off');
+			
+			spyOn(cloak.$doc, 'on');
+			spyOn(cloak.$doc, 'off');
+
+			spyOn(view, 'foo');
+
+			queried = {
+				on: jasmine.createSpy(),
+				off: jasmine.createSpy()
+			};
+			
+			spyOn(view, '$').andReturn(queried);
+		});
+
+		it('should store the event data in view._boundEvents', function() {
+			view._bindEvent(true, 'foo', 'click a');
+
+			expect(view._boundEvents.length).toBe(1);
+			expect(view._boundEvents[0].delegate).toBe(true);
+			expect(view._boundEvents[0].event).toBe('click.' + eventNS);
+			expect(view._boundEvents[0].query).toBe('a');
+		});
+
+		describe('event data', function() {
+			it('should parse data object format', function() {
+				view._bindEvent(null, 'foo', 'click{prop1:value1,prop2:value2} @');
+
+				var call = view.$elem.on.calls.pop();
+				expect(call.args[1]).toEqual({
+					prop1: 'value1',
+					prop2: 'value2'
+				});
+			});
+
+			it('should parse data array format', function() {
+				view._bindEvent(null, 'foo', 'click{value1,value2} @');
+
+				var call = view.$elem.on.calls.pop();
+				expect(call.args[1]).toEqual(['value1', 'value2']);
+			});
+
+			it('should pass event func params when the event is triggered', function() {
+				view.$elem.on.andCallThrough();
+				view._bindEvent(null, 'foo bar baz', 'click @');
+				view.$elem.trigger('click');
+
+				expect(view.foo).toHaveBeenCalledWith('bar', 'baz', jasmine.any(Object));
+			});
+		});
+
+		describe('event bindings', function() {
+			it('should bind to the view element if the query is "@"', function() {
+				view._bindEvent(null, 'foo', 'click @');
+
+				expect(view.$elem.off).toHaveBeenCalledWith('click.' + eventNS);
+				expect(view.$elem.on).toHaveBeenCalledWith('click.' + eventNS, null, jasmine.any(Function));
+			});
+
+			it('should bind to the document if the query is blank ("")', function() {
+				view._bindEvent(null, 'foo', 'click');
+
+				expect(cloak.$doc.off).toHaveBeenCalledWith('click.' + eventNS);
+				expect(cloak.$doc.on).toHaveBeenCalledWith('click.' + eventNS, null, jasmine.any(Function));
+			});
+
+			it('should bind by delegate if the delegate param is true', function() {
+				view._bindEvent(true, 'foo', 'click a');
+
+				expect(view.$elem.off).toHaveBeenCalledWith('click.' + eventNS, 'a');
+				expect(view.$elem.on).toHaveBeenCalledWith('click.' + eventNS, 'a', null, jasmine.any(Function));
+			});
+
+			it('should bind directly to the queried element(s) if delegate param is false', function() {
+				view._bindEvent(false, 'foo', 'click a');
+
+				expect(view.$).toHaveBeenCalledWith('a');
+				expect(queried.off).toHaveBeenCalledWith('click.' + eventNS);
+				expect(queried.on).toHaveBeenCalledWith('click.' + eventNS, null, jasmine.any(Function));
+			});
+		});
 	});
 
 // -------------------------------------------------------------

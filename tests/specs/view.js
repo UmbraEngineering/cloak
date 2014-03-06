@@ -380,7 +380,7 @@ describe('View', function() {
 				view._bindEvent(null, 'foo bar baz', 'click @');
 				view.$elem.trigger('click');
 
-				expect(view.foo).toHaveBeenCalledWith('bar', 'baz', jasmine.any(Object));
+				expect(view.foo).toHaveBeenCalledWith(jasmine.any(Object), 'bar', 'baz');
 			});
 		});
 

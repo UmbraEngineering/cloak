@@ -1,5 +1,4 @@
 
-
 var fs        = require('fs');
 var commonjs  = require('common.js');
 
@@ -40,6 +39,7 @@ module.exports = function(grunt) {
 				smarttabs: true,
 				loopfunc: true,
 				boss: true,
+				laxbreak: true,
 				globals: {
 					console: true,
 					module: true,

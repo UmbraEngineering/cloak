@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<title>cloak</title>
+</head>
+<body>
+	<script src="build.js"></script>
+	<script>
+
+		var Model = require('cloak/model');
+
+		var Person = Model.extend({
+
+			url: '/people{/#}',
+
+			attributes: {
+				name: '',
+				email: ''
+			}
+
+		});
+
+	</script>
+</body>
+</html>

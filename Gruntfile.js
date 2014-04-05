@@ -60,12 +60,15 @@ module.exports = function(grunt) {
 			}
 		},
 		
-		// concat: {
-		// 	lib: {
-		// 		src: [buildPath + '/js/lib/**/*.js'],
-		// 		dest: buildPath + '/js/lib.js'
-		// 	}
-		// },
+		concat: {
+			lib: {
+				src: [
+					buildPath + '/common.js',
+					buildPath + '/**/*.js'
+				],
+				dest: 'build.js'
+			}
+		},
 
 		karma: {
 			options: {
@@ -101,6 +104,6 @@ module.exports = function(grunt) {
 
 // --------------------------------------------------------
 
-	grunt.registerTask('default', ['jshint', 'commonjs:test', 'karma:continuous']);//, 'concat']);
+	grunt.registerTask('default', ['jshint', 'commonjs:test', 'karma:continuous']);
 
 };
